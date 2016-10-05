@@ -4,10 +4,10 @@
 
 define([
     'underscore',
-    'backbone',
+    'contrail-view',
     'contrail-list-model'
-], function (_, Backbone, ContrailListModel) {
-    var FlowListView = Backbone.View.extend({
+], function (_, ContrailView, ContrailListModel) {
+    var FlowListView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
@@ -18,20 +18,31 @@ define([
             var listModelConfig = {
                 remote: {
                     ajaxConfig: {
-                        url: constructReqURL($.extend({}, getURLConfigForGrid(hashParams), {protocol: ['tcp', 'icmp', 'udp']})),
+                        url: ctwc.constructReqURL($.extend({}, nmwgc.getURLConfigForFlowGrid(hashParams), {protocol: ['tcp', 'icmp', 'udp']})),
                         type: 'GET'
                     },
-                    dataParser: ctwp.flowsDataParser
+                    dataParser: nmwp.flowsDataParser
                 }
             };
 
             var contrailListModel = new ContrailListModel(listModelConfig);
-            cowu.renderView4Config(this.$el, contrailListModel, getFlowListViewConfig(hashParams));
+            self.renderView4Config(this.$el, contrailListModel, getFlowListViewConfig(hashParams));
         }
     });
 
     function getFlowListViewConfig(hashParams) {
-        var url = constructReqURL($.extend({}, getURLConfigForGrid(hashParams), {protocol: ['tcp', 'icmp', 'udp']}));
+        var url = ctwc.constructReqURL($.extend({}, nmwgc.getURLConfigForFlowGrid(hashParams), {protocol: ['tcp', 'icmp', 'udp']})),
+            portRange = [], startPort, endPort;
+
+        if (hashParams['port'].indexOf('-') > -1) {
+            portRange = hashParams['port'].split("-");
+            startPort = parseInt(portRange[0]);
+            endPort = parseInt(portRange[1]);
+            //TODO pushBreadcrumb([viewConfig['fqName'],portTitle + 's (' + viewConfig['port'] + ')']);
+        } else {
+            portRange = [hashParams['port'], hashParams['port']];
+            //TODO pushBreadcrumb([viewConfig['fqName'],portTitle + ' ' + viewConfig['port']]);
+        }
 
         return {
             elementId: cowu.formatElementId([ctwl.MONITOR_FLOW_LIST_ID]),
@@ -42,73 +53,51 @@ define([
                         columns: [
                             {
                                 elementId: ctwl.FLOWS_SCATTER_CHART_ID,
-                                title: ctwl.TITLE_FLOWS,
-                                view: "ScatterChartView",
+                                title: ctwl.TITLE_FLOW_SERIES,
+                                view: "ZoomScatterChartView",
                                 viewConfig: {
-                                    class: "port-distribution-chart",
-                                    parseFn: function (chartData) {
-                                        var portData = constructDataForPortDist(chartData, getURLConfigForGrid(hashParams)),
-                                            portTitle = (hashParams['portType'] == 'src') ? ctwl.SOURCE_PORT : ctwl.DESTINATION_PORT,
-                                            portRange = [], startPort, endPort,
-                                            portDistributionParams = $.deparamURLArgs(url),
-                                            valueField, portType,
-                                            portType = 'port', flowCntField = 'flowCnt';
+                                    loadChartInChunks: true,
+                                    chartOptions: {
+                                        xLabel: ctwl.X_AXIS_TITLE_PORT,
+                                        yLabel: ctwl.Y_AXIS_TITLE_BW,
+                                        forceX: [startPort, endPort],
+                                        dataParser: function (response) {
+                                            var portData = constructDataForPortDist(response, nmwgc.getURLConfigForFlowGrid(hashParams)),
+                                                portDistributionParams = cowu.deparamURLArgs(url),
+                                                portType = 'port', flowCntField = 'flowCnt',
+                                                chartData = [];
 
-                                        if (hashParams['port'].indexOf('-') > -1) {
-                                            portRange = hashParams['port'].split("-");
-                                            startPort = parseInt(portRange[0]);
-                                            endPort = parseInt(portRange[1]);
-                                            //TODO pushBreadcrumb([viewConfig['fqName'],portTitle + 's (' + viewConfig['port'] + ')']);
-                                        } else {
-                                            portRange = [hashParams['port'], hashParams['port']];
-                                            //TODO pushBreadcrumb([viewConfig['fqName'],portTitle + ' ' + viewConfig['port']]);
-                                        }
-
-                                        portData = $.map(portData, function (currObj, idx) {
-                                            if (currObj[portType] >= portRange[0] && currObj[portType] <= parseInt(portRange[1])) {
-                                                return currObj;
-                                            }
-                                            else {
-                                                return null;
-                                            }
-                                        });
-
-                                        portData = tenantNetworkMonitorUtils.parsePortDistribution(portData, $.extend({
-                                            startTime: portDistributionParams['startTime'],
-                                            endTime: portDistributionParams['endTime'],
-                                            bandwidthField: 'bytes',
-                                            flowCntField: flowCntField,
-                                            portField: 'port',
-                                            startPort: startPort,
-                                            endPort: endPort
-                                        }, {portType: hashParams['portType']}));
-
-                                        var retObj = {
-                                            d: [{key: ctwl.SOURCE_PORT, values: portData}],
-                                            forceX: [startPort, endPort],
-                                            xLblFormat: d3.format(''),
-                                            yDataType: 'bytes',
-                                            fqName: hashParams['fqName'],
-                                            yLbl: ctwl.Y_AXIS_TITLE_BW,
-                                            link: {
-                                                hashParams: {
-                                                    q: {
-                                                        view: 'list',
-                                                        type: 'network',
-                                                        fqName: hashParams['fqName'],
-                                                        context: 'domain'
-                                                    }
+                                            portData = $.map(portData, function (currObj, idx) {
+                                                if (currObj[portType] >= portRange[0] && currObj[portType] <= parseInt(portRange[1])) {
+                                                    return currObj;
+                                                } else {
+                                                    return null;
                                                 }
-                                            },
-                                            chartOptions: {
-                                                clickFn: onScatterChartClick,
-                                                tooltipFn: ctwgrc.getPortDistributionTooltipConfig(onScatterChartClick)
-                                            },
-                                            title: ctwl.TITLE_PORT_DISTRIBUTION,
-                                            xLbl: ctwl.X_AXIS_TITLE_PORT
-                                        };
+                                            });
 
-                                        return retObj;
+                                            portData = ctwp.parsePortDistribution(portData, $.extend({
+                                                startTime: portDistributionParams['startTime'],
+                                                endTime: portDistributionParams['endTime'],
+                                                bandwidthField: 'bytes',
+                                                flowCntField: flowCntField,
+                                                portField: 'port',
+                                                startPort: startPort,
+                                                endPort: endPort,
+                                                ipAddress: hashParams['ip']
+                                            }, { portType: hashParams['portType'], fqName: hashParams['fqName']}));
+
+                                            chartData = chartData.concat(portData);
+                                            return chartData;
+                                        },
+                                        tooltipConfigCB: ctwgrc.getPortDistributionTooltipConfig(onScatterChartClick),
+                                        clickCB: onScatterChartClick,
+                                        sizeFieldName: 'flowCnt',
+                                        xLabelFormat: d3.format(','),
+                                        yLabelFormat: function(yValue) {
+                                            var formattedValue = formatBytes(yValue, false, null, 1);
+                                            return formattedValue;
+                                        },
+                                        margin: {left: 70}
                                     }
                                 }
                             }
@@ -118,8 +107,9 @@ define([
                         columns: [
                             {
                                 elementId: ctwl.FLOWS_GRID_ID,
-                                title: ctwl.TITLE_FLOWS,
+                                title: ctwl.TITLE_FLOW_SERIES,
                                 view: "FlowGridView",
+                                viewPathPrefix: "monitor/networking/ui/js/views/",
                                 app: cowc.APP_CONTRAIL_CONTROLLER,
                                 viewConfig: {
                                     hashParams: hashParams,
@@ -178,42 +168,31 @@ define([
         return portArr;
     };
 
-    function getURLConfigForGrid(viewConfig) {
-        var urlConfigObj = {
-            'container': "#content-container",
-            'context': "network",
-            'type': "portRangeDetail",
-            'startTime': viewConfig['startTime'],
-            'endTime': viewConfig['endTime'],
-            'fqName': viewConfig['fqName'],
-            'port': viewConfig['port'],
-            'portType': viewConfig['portType']
-        };
-        return urlConfigObj;
-    };
-
-    var onScatterChartClick = function(chartConfig) {
-        var obj = {
+    function onScatterChartClick(chartConfig) {
+        var hashParams = {
             fqName: chartConfig['fqName'],
             port: chartConfig['range']
         };
         if (chartConfig['startTime'] != null && chartConfig['endTime'] != null) {
-            obj['startTime'] = chartConfig['startTime'];
-            obj['endTime'] = chartConfig['endTime'];
+            hashParams['startTime'] = chartConfig['startTime'];
+            hashParams['endTime'] = chartConfig['endTime'];
         }
 
         if (chartConfig['type'] == 'sport')
-            obj['portType'] = 'src';
+            hashParams['portType'] = 'src';
         else if (chartConfig['type'] == 'dport')
-            obj['portType'] = 'dst';
+            hashParams['portType'] = 'dst';
 
-        obj['type'] = "flow";
-        obj['view'] = "details";
+        hashParams['type'] = "flow";
+        hashParams['view'] = "details";
+
+        if(contrail.checkIfExist(chartConfig['ipAddress'])) {
+            hashParams['ip'] = chartConfig['ipAddress'];
+        }
+
         // dont change the 'p' of hash here as FlowListView is used
         // on multiple pages w/ different hash
-        layoutHandler.setURLHashParams(obj, {
-            merge: false
-        });
+        layoutHandler.setURLHashParams(hashParams, { merge: false });
     };
 
     return FlowListView;

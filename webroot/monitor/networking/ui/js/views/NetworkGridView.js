@@ -4,9 +4,9 @@
 
 define([
     'underscore',
-    'backbone'
-], function (_, Backbone) {
-    var NetworkGridView = Backbone.View.extend({
+    'contrail-view'
+], function (_, ContrailView) {
+    var NetworkGridView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
@@ -16,7 +16,7 @@ define([
                 pagerOptions = viewConfig['pagerOptions'];
 
             var networkRemoteConfig = {
-                url: projectFQN != null ? ctwc.get(ctwc.URL_PROJECT_NETWORKS_IN_CHUNKS, 25, projectFQN, $.now()) : ctwc.get(ctwc.URL_NETWORKS_DETAILS_IN_CHUNKS, 25, $.now()),
+                url: projectFQN != null ? ctwc.get(ctwc.URL_PROJECT_NETWORKS_IN_CHUNKS, 10, 100, projectFQN, $.now()) : ctwc.get(ctwc.URL_NETWORKS_DETAILS_IN_CHUNKS, 10, 100, $.now()),
                 type: 'POST',
                 data: JSON.stringify({
                     data: [{
@@ -29,32 +29,20 @@ define([
             // TODO: Handle multi-tenancy
             var ucid = projectFQN != null ? (ctwc.UCID_PREFIX_MN_LISTS + projectFQN + ":virtual-networks") : ctwc.UCID_ALL_VN_LIST;
 
-            cowu.renderView4Config(self.$el, self.model, getNetworkGridViewConfig(networkRemoteConfig, ucid, pagerOptions));
+            self.renderView4Config(self.$el, self.model, getNetworkGridViewConfig(networkRemoteConfig, ucid, pagerOptions));
 
         }
     });
 
     var getNetworkGridViewConfig = function (networkRemoteConfig, ucid, pagerOptions) {
         return {
-            elementId: cowu.formatElementId([ctwl.MONITOR_NETWORK_LIST_VIEW_ID]),
-            view: "SectionView",
+            elementId: ctwl.PROJECT_NETWORK_GRID_ID,
+            title: ctwl.TITLE_NETWORKS,
+            view: "GridView",
             viewConfig: {
-                rows: [
-                    {
-                        columns: [
-                            {
-                                elementId: ctwl.PROJECT_NETWORK_GRID_ID,
-                                title: ctwl.TITLE_NETWORKS,
-                                view: "GridView",
-                                viewConfig: {
-                                    elementConfig: getProjectNetworkGridConfig(networkRemoteConfig, ucid, pagerOptions)
-                                }
-                            }
-                        ]
-                    }
-                ]
+                elementConfig: getProjectNetworkGridConfig(networkRemoteConfig, ucid, pagerOptions)
             }
-        }
+        };
     };
 
     var getProjectNetworkGridConfig = function (networkRemoteConfig, ucid, pagerOptions) {
@@ -75,24 +63,33 @@ define([
                     autoRefresh: false,
                     checkboxSelectable: false,
                     detail: {
-                        template: cowu.generateDetailTemplateHTML(getNetworkDetailsTemplateConfig(), cowc.APP_CONTRAIL_CONTROLLER)
-                    }
+                        template: cowu.generateDetailTemplateHTML(getNetworkDetailsTemplateConfig(), cowc.APP_CONTRAIL_CONTROLLER, 'rawData')
+                    },
+                    fixedRowHeight: 30
                 },
                 dataSource: {
                     remote: {
                         ajaxConfig: networkRemoteConfig,
-                        dataParser: ctwp.networkDataParser
+                        dataParser: nmwp.networkDataParser
                     },
                     vlRemoteConfig: {
-                        vlRemoteList: ctwgc.getVNDetailsLazyRemoteConfig(ctwc.TYPE_VIRTUAL_NETWORK)
+                        vlRemoteList: nmwgc.getVNDetailsLazyRemoteConfig(ctwc.TYPE_VIRTUAL_NETWORK)
                     },
                     cacheConfig: {
                         ucid: ucid
                     }
+                },
+                statusMessages: {
+                    loading: {
+                        text: 'Loading Networks..'
+                    },
+                    empty: {
+                        text: 'No Networks Found.'
+                    }
                 }
             },
             columnHeader: {
-                columns: ctwgc.projectNetworksColumns
+                columns: nmwgc.projectNetworksColumns
             },
             footer: {
                 pager: contrail.handleIfNull(pagerOptions, { options: { pageSize: 5, pageSizeSelect: [5, 10, 50, 100] } })
@@ -112,7 +109,7 @@ define([
                         templateGeneratorConfig: {
                             columns: [
                                 {
-                                    class: 'span6',
+                                    class: 'col-xs-6',
                                     rows: [
                                         {
                                             title: ctwl.TITLE_NETWORK_DETAILS,
@@ -149,7 +146,7 @@ define([
                                     ]
                                 },
                                 {
-                                    class: 'span6',
+                                    class: 'col-xs-6',
                                     rows: [
                                         {
                                             title: ctwl.TITLE_TRAFFIC_DETAILS,
@@ -183,14 +180,6 @@ define([
                                                     templateGeneratorConfig: {
                                                         formatter: 'byte'
                                                     }
-                                                },
-                                                {
-                                                    key: 'in_tpkts',
-                                                    templateGenerator: 'TextGenerator'
-                                                },
-                                                {
-                                                    key: 'out_tpkts',
-                                                    templateGenerator: 'TextGenerator'
                                                 }
                                             ]
                                         }
@@ -204,7 +193,7 @@ define([
                         templateGeneratorConfig: {
                             columns: [
                                 {
-                                    class: 'span12',
+                                    class: 'col-xs-12',
                                     rows: [
                                         {
                                             title: ctwl.TITLE_VRF_STATS,

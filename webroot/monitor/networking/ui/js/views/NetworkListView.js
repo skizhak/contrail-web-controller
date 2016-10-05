@@ -4,43 +4,50 @@
 
 define([
     'underscore',
-    'backbone',
+    'contrail-view',
     'contrail-list-model'
-], function (_, Backbone, ContrailListModel) {
-    var NetworkListView = Backbone.View.extend({
+], function (_, ContrailView, ContrailListModel) {
+    var NetworkListView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
-            var self = this, viewConfig = this.attributes.viewConfig;
+            var self = this,
+                viewConfig = this.attributes.viewConfig,
+                domainFQN = contrail.getCookie(cowc.COOKIE_DOMAIN),
+                projectSelectedValueData = viewConfig.projectSelectedValueData,
+                projectFQN = (projectSelectedValueData.value === 'all') ? null : domainFQN + ':' + projectSelectedValueData.name,
+                contrailListModel = new ContrailListModel(getNetworkListModelConfig(projectFQN));
 
-            var listModelConfig = {
-                remote: {
-                    ajaxConfig: {
-                        url: ctwc.get(ctwc.URL_NETWORKS_DETAILS_IN_CHUNKS, 25, $.now()),
-                        type: "POST",
-                        data: JSON.stringify({
-                            data: [{
-                                "type": ctwc.TYPE_VIRTUAL_NETWORK,
-                                "cfilt": ctwc.FILTERS_COLUMN_VN.join(',')
-                            }]
-                        })
-                    },
-                    dataParser: ctwp.networkDataParser
-                },
-                vlRemoteConfig: {
-                    vlRemoteList: ctwgc.getVNDetailsLazyRemoteConfig(ctwc.TYPE_VIRTUAL_NETWORK)
-                },
-                cacheConfig: {
-                    ucid: ctwc.UCID_ALL_VN_LIST
-                }
-            };
-
-            var contrailListModel = new ContrailListModel(listModelConfig);
-            cowu.renderView4Config(this.$el, contrailListModel, getNetworkListViewConfig());
+            self.renderView4Config(self.$el, contrailListModel, getNetworkListViewConfig());
+            ctwu.setProject4NetworkListURLHashParams(projectFQN);
         }
     });
 
-    var getNetworkListViewConfig = function () {
+    function getNetworkListModelConfig(projectFQN) {
+        return {
+            remote: {
+                ajaxConfig: {
+                    url: projectFQN != null ? ctwc.get(ctwc.URL_PROJECT_NETWORKS_IN_CHUNKS, 10, 100, projectFQN, $.now()) : ctwc.get(ctwc.URL_NETWORKS_DETAILS_IN_CHUNKS, 10, 100, $.now()),
+                    type: "POST",
+                    data: JSON.stringify({
+                        data: [{
+                            "type": ctwc.TYPE_VIRTUAL_NETWORK,
+                            "cfilt": ctwc.FILTERS_COLUMN_VN.join(',')
+                        }]
+                    })
+                },
+                dataParser: nmwp.networkDataParser
+            },
+            vlRemoteConfig: {
+                vlRemoteList: nmwgc.getVNDetailsLazyRemoteConfig(ctwc.TYPE_VIRTUAL_NETWORK)
+            },
+            cacheConfig: {
+                ucid: projectFQN != null ? (ctwc.UCID_PREFIX_MN_LISTS + projectFQN + ":virtual-networks") : ctwc.UCID_ALL_VN_LIST
+            }
+        };
+    }
+
+    function getNetworkListViewConfig() {
         return {
             elementId: cowu.formatElementId([ctwl.MONITOR_NETWORK_LIST_ID]),
             view: "SectionView",
@@ -51,20 +58,22 @@ define([
                             {
                                 elementId: ctwl.NETWORKS_PORTS_SCATTER_CHART_ID,
                                 title: ctwl.TITLE_NETWORKS,
-                                view: "ScatterChartView",
+                                view: "ZoomScatterChartView",
                                 viewConfig: {
-                                    class: "port-distribution-chart",
                                     loadChartInChunks: true,
-                                    parseFn: function (response) {
-                                        return {
-                                            d: [{key: 'Networks', values: response}],
-                                            xLbl: 'Interfaces',
-                                            yLbl: 'Connected Networks',
-                                            forceX: [0, 5],
-                                            forceY: [0, 10],
-                                            chartOptions: {tooltipFn: getNetworkTooltipConfig, clickFn: onScatterChartClick},
-                                            hideLoadingIcon: false
-                                        }
+                                    chartOptions: {
+                                        xLabel: 'Interfaces',
+                                        yLabel: 'Connected Networks',
+                                        forceX: [0, 10],
+                                        forceY: [0, 10],
+                                        xLabelFormat: d3.format(".01f"),
+                                        dataParser: function (response) {
+                                            return response;
+                                        },
+                                        tooltipConfigCB: getNetworkTooltipConfig,
+                                        clickCB: onScatterChartClick,
+                                        sizeFieldName: 'throughput',
+                                        noDataMessage: "No virtual network available."
                                     }
                                 }
                             },
@@ -76,8 +85,9 @@ define([
                                 elementId: ctwl.PROJECT_NETWORKS_ID,
                                 title: ctwl.TITLE_NETWORKS,
                                 view: "NetworkGridView",
+                                viewPathPrefix: "monitor/networking/ui/js/views/",
                                 app: cowc.APP_CONTRAIL_CONTROLLER,
-                                viewConfig: {projectFQN: null, parentType: 'project', pagerOptions: { options: { pageSize: 10, pageSizeSelect: [10, 50, 100] } }}
+                                viewConfig: {projectFQN: null, parentType: 'project', pagerOptions: { options: { pageSize: 8, pageSizeSelect: [8, 50, 100] } }}
                             }
                         ]
                     }
@@ -88,7 +98,7 @@ define([
 
     var onScatterChartClick = function(chartConfig) {
         var networkFQN = chartConfig['name'];
-        ctwgrc.setNetworkURLHashParams(null, networkFQN, true);
+        ctwu.setNetworkURLHashParams(null, networkFQN, true);
     };
 
     var getNetworkTooltipConfig = function(data) {
@@ -113,7 +123,7 @@ define([
                     {
                         type: 'link',
                         text: 'View',
-                        iconClass: 'icon-external-link',
+                        iconClass: 'fa fa-external-link',
                         callback: onScatterChartClick
                     }
                 ]

@@ -4,35 +4,37 @@
 
 define([
     'underscore',
-    'backbone',
+    'contrail-view',
     'contrail-list-model'
-], function (_, Backbone, ContrailListModel) {
-    var ProjectListView = Backbone.View.extend({
+], function (_, ContrailView, ContrailListModel) {
+    var ProjectListView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
-            var self = this, viewConfig = this.attributes.viewConfig;
+            var self = this, viewConfig = this.attributes.viewConfig,
+                contrailListModel = new ContrailListModel(getProjectListModelConfig());
 
-            var listModelConfig = {
-                remote: {
-                    ajaxConfig: {
-                        url: networkPopulateFns.getProjectsURL(ctwc.DEFAULT_DOMAIN),
-                        type: 'GET'
-                    },
-                    hlRemoteConfig: ctwgc.getProjectDetailsHLazyRemoteConfig(),
-                    dataParser: ctwp.projectDataParser
-                },
-                cacheConfig: {
-                    ucid: ctwc.UCID_DEFAULT_DOMAIN_PROJECT_LIST //TODO: Handle multi-tenancy
-                }
-            };
-
-            var contrailListModel = new ContrailListModel(listModelConfig);
-            cowu.renderView4Config(this.$el, contrailListModel, getProjectListViewConfig());
+            self.renderView4Config(self.$el, contrailListModel, getProjectListViewConfig());
         }
     });
 
-    var getProjectListViewConfig = function () {
+    function getProjectListModelConfig() {
+        return {
+            remote: {
+                ajaxConfig: {
+                        url: ctwc.getProjectsURL({name: ctwc.COOKIE_DOMAIN}, {getProjectsFromIdentity: true}),
+                        type: 'GET'
+                },
+                hlRemoteConfig: nmwgc.getProjectDetailsHLazyRemoteConfig(),
+                    dataParser: nmwp.projectDataParser
+            },
+            cacheConfig: {
+                ucid: ctwc.UCID_COOKIE_DOMAIN_PROJECT_LIST
+            }
+        };
+    };
+
+    function getProjectListViewConfig() {
         return {
             elementId: cowu.formatElementId([ctwl.MONITOR_PROJECT_LIST_ID]),
             view: "SectionView",
@@ -43,23 +45,22 @@ define([
                             {
                                 elementId: ctwl.PROJECTS_SCATTER_CHART_ID,
                                 title: ctwl.TITLE_PROJECTS,
-                                view: "ScatterChartView",
+                                view: "ZoomScatterChartView",
                                 viewConfig: {
-                                    class: "port-distribution-chart",
                                     loadChartInChunks: true,
-                                    parseFn: function (response) {
-                                        return {
-                                            d: [{
-                                                key: 'Projects',
-                                                values: response
-                                            }],
-                                            xLbl: 'Interfaces',
-                                            yLbl: 'Networks',
-                                            forceX: [0, 5],
-                                            forceY: [0, 10],
-                                            chartOptions: {tooltipFn: getProjectTooltipConfig, clickFn: onScatterChartClick},
-                                            hideLoadingIcon: false
-                                        }
+                                    chartOptions: {
+                                        xLabel: 'Interfaces',
+                                        yLabel: 'Networks',
+                                        forceX: [0, 10],
+                                        forceY: [0, 10],
+                                        dataParser: function (response) {
+                                            return response;
+                                        },
+                                        xLabelFormat: d3.format(".01f"),
+                                        tooltipConfigCB: getProjectTooltipConfig,
+                                        clickCB: onScatterChartClick,
+                                        sizeFieldName: 'throughput',
+                                        noDataMessage: "No project available."
                                     }
                                 }
                             },
@@ -71,6 +72,7 @@ define([
                                 elementId: ctwl.PROJECTS_ID,
                                 title: ctwl.TITLE_PROJECTS,
                                 view: "ProjectGridView",
+                                viewPathPrefix: "monitor/networking/ui/js/views/",
                                 app: cowc.APP_CONTRAIL_CONTROLLER,
                                 viewConfig: {pagerOptions: { options: { pageSize: 10, pageSizeSelect: [10, 50, 100] } }}
                             }
@@ -83,13 +85,11 @@ define([
 
     var onScatterChartClick = function(chartConfig) {
         var projectFQN = chartConfig.name;
-        ctwgrc.setProjectURLHashParams(null, projectFQN, true);
+        ctwu.setProjectURLHashParams(null, projectFQN, true);
     };
 
     var getProjectTooltipConfig = function(data) {
-        var projectFQNObj = data.name.split(':'),
-            info = [],
-            actions = [];
+        var projectFQNObj = data.name.split(':');
 
         return {
             title: {
@@ -108,7 +108,7 @@ define([
                     {
                         type: 'link',
                         text: 'View',
-                        iconClass: 'icon-external-link',
+                        iconClass: 'fa fa-external-link',
                         callback: onScatterChartClick
                     }
                 ]

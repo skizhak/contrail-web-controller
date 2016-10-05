@@ -4,198 +4,12 @@
 
 define([
     'underscore',
-    'contrail-view-model',
-    'monitor/networking/ui/js/views/NetworkingGraphView',
-    'monitor/networking/ui/js/views/ProjectTabView',
-    'monitor/networking/ui/js/views/NetworkTabView',
-    'monitor/networking/ui/js/views/NetworkGridView',
-    'monitor/networking/ui/js/views/InstanceTabView',
-    'monitor/networking/ui/js/views/InstanceGridView',
-    'monitor/networking/ui/js/views/ProjectGridView',
-    'monitor/networking/ui/js/views/FlowGridView',
-    'monitor/networking/ui/js/views/NetworkListView',
-    'monitor/networking/ui/js/views/ProjectListView',
-    'monitor/networking/ui/js/views/InstanceListView',
-    'monitor/networking/ui/js/views/FlowListView',
-    'monitor/networking/ui/js/views/InstanceView',
-    'monitor/networking/ui/js/views/InstanceTrafficStatsView',
-    'monitor/networking/ui/js/views/ProjectView',
-    'monitor/networking/ui/js/views/NetworkView',
-    'monitor/networking/ui/js/views/ConnectedNetworkTabView',
-    'monitor/networking/ui/js/views/ConnectedNetworkTrafficStatsView',
-    'monitor/alarms/ui/js/views/AlarmListView',
-    'monitor/alarms/ui/js/views/AlarmGridView',
-    'monitor/networking/ui/js/views/InterfaceGridView'
-], function (_,ContrailViewModel, NetworkingGraphView, ProjectTabView, NetworkTabView, NetworkGridView, InstanceTabView, InstanceGridView,
-             ProjectGridView, FlowGridView, NetworkListView, ProjectListView, InstanceListView, FlowListView, InstanceView,
-             InstanceTrafficStatsView, ProjectView, NetworkView, ConnectedNetworkTabView, ConnectedNetworkTrafficStatsView,
-             AlarmListView, AlarmGridView, InterfaceGridView) {
+    'contrail-list-model'
+], function (_, ContrailListModel) {
 
     var CTUtils = function () {
         var self = this;
-
-        self.initPortDistributionCharts = function (data) {
-            var chartsTemplate = contrail.getTemplate4Id('port-distribution-charts-template');
-            var networkChart, chartSelector;
-            if ((data['chartType'] == null) && ($.inArray(ifNull(data['context'], ''), ['domain', 'network', 'connected-nw', 'project', 'instance']) > -1)) {
-                networkChart = true;
-                chartSelector = '.port-distribution-chart';
-            } else {
-                networkChart = false;
-                chartSelector = '.port-distribution-chart';
-            }
-            $(this).html(chartsTemplate(data));
-            if (networkChart == true) {
-                //Add durationStr
-                $.each(data['d'], function (idx, obj) {
-                    if (ifNull(obj['duration'], true)) {
-                        if (obj['title'].indexOf('(') < 0)
-                            obj['title'] += durationStr;
-                    }
-                });
-                //Set the chart height to parent height - title height
-            }
-            //$(this).find('.stack-chart').setAvblSize();
-            var charts = $(this).find(chartSelector);
-            $.each(charts, function (idx, chart) {
-                //Bind the function to pass on the context of url & objectType to schema parse function
-                var chartData = data['d'][idx];
-                var chartType = ifNull(chartData['chartType'], '');
-                var fields;
-                var objectType = chartData['objectType'];
-                //Load asynchronously
-                initDeferred($.extend({}, chartData, {selector: $(this), renderFn: 'initScatterChart'}));
-                //If title is clickable
-            });
-        };
-
-        self.getNetworkingGraphConfig = function (url, elementNameObject, keySuffix, type) {
-            return {
-                remote: {
-                    ajaxConfig: {
-                        url: url,
-                        type: 'GET'
-                    }
-                },
-                cacheConfig: {
-                    ucid: ctwc.UCID_PREFIX_MN_GRAPHS + elementNameObject.fqName + keySuffix
-                },
-                focusedElement: {
-                    type: type,
-                    name: elementNameObject
-                }
-            };
-        };
-        self.getHeatChartClickFn = function(selector, response) {
-            // TODO: Implement click out function for instance port map
-            return function(clickData) {}
-        };
-
-        self.getInstanceTabViewConfig = function (viewConfig) {
-            var instanceUUID = viewConfig['instanceUUID'],
-                instanceDetailsUrl = ctwc.get(ctwc.URL_INSTANCE_SUMMARY, instanceUUID),
-                networkFQN = viewConfig['networkFQN'],
-                tabsToDisplay = viewConfig['tabsToDisplay'],
-                tabObjs = [];
-            var allTabs = [
-                        {
-                            elementId: ctwl.INSTANCE_DETAILS_ID,
-                            title: ctwl.TITLE_DETAILS,
-                            view: "DetailsView",
-                            viewConfig: {
-                                ajaxConfig: {
-                                    url: instanceDetailsUrl,
-                                    type: 'GET'
-                                },
-                                modelKey: ctwc.get(ctwc.UMID_INSTANCE_UVE, instanceUUID),
-                                templateConfig: ctwu.getInstanceDetailsTemplateConfig(),
-                                app: cowc.APP_CONTRAIL_CONTROLLER,
-                                dataParser: function (response) {
-                                    return {
-                                        name: instanceUUID,
-                                        value: response
-                                    };
-                                }
-                            }
-                        },
-                        {
-                            elementId: ctwl.INSTANCE_INTERFACE_ID,
-                            title: ctwl.TITLE_INTERFACES,
-                            view: "InterfaceGridView",
-                            app: cowc.APP_CONTRAIL_CONTROLLER,
-                            viewConfig: {
-                                modelKey: ctwc.get(ctwc.UMID_INSTANCE_UVE, instanceUUID),
-                                instanceUUID: instanceUUID,
-                                networkFQN: networkFQN
-                            }
-                        },
-                        {
-                            elementId: ctwl.INSTANCE_TRAFFIC_STATS_ID,
-                            title: ctwl.TITLE_TRAFFIC_STATISTICS,
-                            app: cowc.APP_CONTRAIL_CONTROLLER,
-                            view: "InstanceTrafficStatsView",
-                            viewConfig: {
-                                modelKey: ctwc.get(ctwc.UMID_INSTANCE_UVE, instanceUUID),
-                                instanceUUID: instanceUUID,
-                                parseFn: ctwp.parseLineChartData
-                            }
-                        },
-                        {
-                            elementId: ctwl.INSTANCE_PORT_HEAT_CHART_ID,
-                            title: ctwl.TITLE_PORT_MAP,
-                            view: "HeatChartView",
-                            viewConfig: {
-                                ajaxConfig: {
-                                    url: ctwc.get(ctwc.URL_INSTANCE_SUMMARY, instanceUUID),
-                                    type: 'GET'
-                                },
-                                chartOptions: {getClickFn: self.getHeatChartClickFn}
-                            }
-                        }
-                    ];
-            if (tabsToDisplay == null) {
-                tabObjs = allTabs;
-            } else if (typeof tabsToDisplay =='string' || $.isArray(tabsToDisplay)) {
-                if(typeof tabsToDisplay == 'string') {
-                    tabsToDisplay = [tabsToDisplay];
-                }
-                for(var i = 0; i < tabsToDisplay.length; i++ ) {
-                    $.each(allTabs,function(idx,obj) {
-                        if(obj['view'] == tabsToDisplay[i])
-                            tabObjs.push(obj);
-                    });
-                }
-            }
-            return {
-                elementId: cowu.formatElementId([ctwl.MONITOR_INSTANCE_VIEW_ID, '-section']),
-                view: "SectionView",
-                viewConfig: {
-                    rows: [
-                        {
-                            columns: [
-                                {
-                                    elementId: ctwl.INSTANCE_TABS_ID,
-                                    view: "TabsView",
-                                    viewConfig: {
-                                        theme: 'classic',
-                                        activate: function (e, ui) {
-                                            var selTab = $(ui.newTab.context).text();
-                                            if (selTab == ctwl.TITLE_TRAFFIC_STATISTICS) {
-                                                $('#' + ctwl.INSTANCE_TRAFFIC_STATS_ID).find('svg').trigger('refresh');
-                                            } else if (selTab == ctwl.TITLE_INTERFACES) {
-                                                $('#' + ctwl.INSTANCE_INTERFACE_GRID_ID).data('contrailGrid').refreshView();
-                                            }
-                                        },
-                                        tabs: tabObjs
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }
-        
-        }
+        var utilVariable = [];
         self.getInstanceDetailsTemplateConfig = function () {
             return {
 
@@ -207,7 +21,7 @@ define([
                             templateGeneratorConfig: {
                                 columns: [
                                     {
-                                        class: 'span6',
+                                        class: 'col-xs-6',
                                         rows: [
                                             {
                                                 title: ctwl.TITLE_INSTANCE_DETAILS,
@@ -237,7 +51,7 @@ define([
                                         ]
                                     },
                                     {
-                                        class: 'span6',
+                                        class: 'col-xs-6',
                                         rows: [
                                             {
                                                 title: ctwl.TITLE_CPU_MEMORY_INFO,
@@ -270,202 +84,828 @@ define([
                         }
                     ]
                 }
-            
+
             }
         }
-        self.getInstanceTabViewModelConfig = function (instanceUUID) {
-            var modelKey = ctwc.get(ctwc.UMID_INSTANCE_UVE, instanceUUID);
-            var viewModelConfig = {
-                    modelKey: modelKey,
-                    remote: {
-                        ajaxConfig: {
-                            url: ctwc.get(ctwc.URL_INSTANCE_SUMMARY, instanceUUID),
-                            type: 'GET'
-                        },
-                        dataParser: function(response) {
-                            return {name: instanceUUID, value: response};
+
+        self.getRBACPermissionExpandDetails = function(keyClass) {
+            return {
+                title: "Permissions",
+                templateGenerator: 'BlockListTemplateGenerator',
+                templateGeneratorConfig: [
+                    {
+                        label: 'Owner',
+                        key: 'perms2.owner',
+                        keyClass: keyClass,
+                        templateGenerator: 'TextGenerator'
+                    },
+                    {
+                        label: 'Owner Permissions',
+                        key: 'perms2.owner_access',
+                        keyClass: keyClass,
+                        templateGenerator: 'TextGenerator',
+                        templateGeneratorConfig: {
+                            formatter: 'permissionFormatter',
                         }
                     },
-                    vlRemoteConfig: {
-                        vlRemoteList: ctwgc.getVMInterfacesLazyRemoteConfig()
+                    {
+                        label: 'Global Permissions',
+                        key: 'perms2.global_access',
+                        keyClass: keyClass,
+                        templateGenerator: 'TextGenerator',
+                        templateGeneratorConfig: {
+                            formatter: 'permissionFormatter',
+                        }
+                    },
+                    {
+                        label: 'Shared List',
+                        key: 'perms2.share',
+                        keyClass: keyClass,
+                        templateGenerator: 'TextGenerator',
+                        templateGeneratorConfig: {
+                            formatter: 'sharedPermissionFormatter'
+                        }
                     }
+                ]
+            }
+        };
+
+        self.getPermissionsValidation = function() {
+            return {
+                key: 'share_list',
+                type: cowc.OBJECT_TYPE_COLLECTION,
+                getValidation: 'rbacPermsShareValidations'
+            }
+        };
+
+        self.bindPermissionsValidation = function(editView) {
+            kbValidation.bind(editView,
+                    {collection: editView.model.model().attributes.share_list});
+        };
+
+        //If there is discrepancy in data sent from multiple sources
+        self.getDataBasedOnSource = function (data) {
+            if ((data != null) && (data[0] instanceof Array)) {
+                var idx = 0;
+                //Loop through and pick the index for vrouteragent
+                for (var i = 0; i < data.length; i++) {
+                    if (data[i][1] != null) {
+                        if (data[i][1].match('Compute:contrail-vrouter-agent')) {
+                            idx = i;
+                            break;
+                        }
+                    }
+                }
+                data = data[idx][0];
+            }
+            return data;
+        };
+
+        // This function formats the VN name by discarding the domain name and appending the project name in the braces
+        // input: either array of networks or single network like [default-domain:demo:ipv6test2], default-domain:demo:ipv6test2
+        // output:[ipv6test2 (demo)],ipv6test2 (demo).
+
+        self.formatVNName = function (vnName) {
+            var formattedValue;
+            if (!$.isArray(vnName))
+                vnName = [vnName];
+            formattedValue = $.map(vnName, function (value, idx) {
+                var fqNameArr = value.split(':');
+                if (fqNameArr.length == 3)
+                    return fqNameArr[2] + ' (' + fqNameArr[1] + ')';
+                else
+                    return value;
+            });
+            return formattedValue;
+        };
+
+        this.isServiceVN = function (vnFQN) {
+            var fqnArray = vnFQN.split(":");
+
+            if(ctwc.SERVICE_VN_EXCLUDE_LIST.indexOf(fqnArray[2]) != -1) {
+                return true;
+            }
+
+            return false;
+        };
+
+        this.getDomainListModelConfig = function() {
+            return {
+                remote: {
+                    ajaxConfig: {
+                        url: ctwc.URL_ALL_DOMAINS
+                    },
+                    dataParser: function(response) {
+                        return  $.map(response.domains, function (n, i) {
+                            return {
+                                fq_name: n.fq_name.join(':'),
+                                name: n.fq_name[0],
+                                value: n.uuid
+                            };
+                        });
+                    },
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                },
+                cacheConfig : {
+                    ucid: ctwc.UCID_BC_ALL_DOMAINS,
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.DOMAIN_CACHE_UPDATE_INTERVAL
+                }
+            }
+        };
+
+        this.getGlobalSysConfigListModelConfig = function() {
+            return {
+                remote: {
+                    ajaxConfig: {
+                        url: '/api/tenants/config/list-global-system-config'
+                    },
+                    dataParser: function(response) {
+                        return  $.map(response['global-system-configs'], function (n, i) {
+                            return {
+                                fq_name: n.fq_name.join(':'),
+                                name: n.fq_name[0],
+                                value: n.uuid
+                            };
+                        });
+                    },
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate =
+                            contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig =
+                                $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE,
+                                         {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                },
+                cacheConfig : {
+                    ucid: ctwc.UCID_BC_ALL_GLOBAL_SYS_CONFIGS,
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.DOMAIN_CACHE_UPDATE_INTERVAL
+                }
+            }
+        };
+
+        this.getSASetListModelConfig = function() {
+            return {
+                remote: {
+                    ajaxConfig: {
+                        url: '/api/tenants/config/service-appliance-sets'
+                    },
+                    dataParser: function(response) {
+                        return  $.map(response, function (n, i) {
+                            return {
+                                fq_name: n.fq_name.join(':'),
+                                name: n.fq_name[1],
+                                value: n.uuid
+                            };
+                        });
+                    },
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate =
+                            contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig =
+                                $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE,
+                                         {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                }/*,
+                cacheConfig : {
+                    ucid: ctwc.UCID_BC_ALL_SA_SETS,
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.DOMAIN_CACHE_UPDATE_INTERVAL
+                }
+                */
+            }
+        };
+
+        this.getAllDomains = function() {
+            var listModelConfig = {
+                remote: {
+                    ajaxConfig: {
+                        url: ctwc.URL_ALL_DOMAINS
+                    },
+                    dataParser: function(response) {
+                        return  $.map(response.domains, function (n, i) {
+                            return {
+                                fq_name: n.fq_name.join(':'),
+                                name: n.fq_name[0],
+                                value: n.uuid
+                            };
+                        });
+                    },
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                },
+                cacheConfig : {
+                    ucid: ctwc.UCID_BC_ALL_DOMAINS,
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.DOMAIN_CACHE_UPDATE_INTERVAL
+                }
+            };
+
+            var contrailListModel = new ContrailListModel(listModelConfig);
+
+            return contrailListModel;
+        };
+
+        this.getProjectListModelConfig = function(domainObj, dropdownOptions) {
+            var modelConfig = {
+                remote: {
+                    ajaxConfig: {
+                        url: ctwc.URL_ALL_PROJECTS
+                    },
+                    dataParser: function(response) {
+                        return  $.map(response.projects, function (n, i) {
+                            return {
+                                fq_name: n.fq_name.join(':'),
+                                name: n.fq_name[1],
+                                value: n.uuid
+                            };
+                        });
+                    },
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                },
+            };
+            if ((null == dropdownOptions) ||
+                (null == dropdownOptions['config']) ||
+                (false == dropdownOptions['config'])) {
+                modelConfig.cacheConfig = {
+                    ucid: ctwc.get(ctwc.UCID_BC_DOMAIN_ALL_PROJECTS,
+                                   domainObj.name),
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.PROJECT_CACHE_UPDATE_INTERVAL
                 };
-
-                return new ContrailViewModel(viewModelConfig);
-        }
-        
-        self.getUUIDByName = function (fqName) {
-            var fqArray = fqName.split(":"),
-                ucid, modeltems, cachedData;
-
-            if (fqArray.length == 1) {
-                ucid = ctwc.UCID_BC_ALL_DOMAINS;
-                cachedData = cowch.get(ucid);
-                if (cachedData == null) {
-                    cowch.getAllDomains();
-                    return null;
-                }
-            } else if (fqArray.length == 2) {
-                ucid = ctwc.get(ctwc.UCID_BC_DOMAIN_ALL_PROJECTS, fqArray[0]);
-                cachedData = cowch.get(ucid);
-                if (cachedData == null) {
-                    cowch.getProjects4Domain(fqArray[0]);
-                    return getUUIDByName(fqName);
-                }
-            } else if (fqArray.length == 3) {
-                ucid = ctwc.get(ctwc.UCID_BC_PROJECT_ALL_NETWORKS, fqArray[0] + ":" + fqArray[1]);
-                cachedData = cowch.get(ucid);
-                if (cachedData == null) {
-                    cowch.getNetworks4Project(fqArray[0] + ":" + fqArray[1]);
-                    return getUUIDByName(fqName);
-                }
             }
+            return modelConfig;
+        };
 
-            if (cachedData != null) {
-                modeltems = cachedData['dataObject']['listModel'].getItems();
-                var cachedObject = _.find(modeltems, function (domainObj) {
-                    return domainObj['fq_name'] == fqName;
-                });
-                if (contrail.checkIfExist(cachedObject)) {
-                    return cachedObject['value'];
+        this.getDNSListModelConfig = function(dns) {
+            return {
+                remote: {
+                    ajaxConfig: {
+                        url: '/api/tenants/config/list-virtual-DNSs'
+                    },
+                    dataParser: function(response) {
+                        return  $.map(response, function (n, i) {
+                            return {
+                                fq_name: n.fq_name.join(':'),
+                                name: n.fq_name[1],
+                                value: n.uuid
+                            };
+                        });
+                    },
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                }/*,
+                cacheConfig : {
+                    ucid: ctwc.get(ctwc.UCID_BC_DOMAIN_ALL_DNS, dns),
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.PROJECT_CACHE_UPDATE_INTERVAL
+                }*/
+            };
+        };
+        this.getProjects4Domain = function(domain) {
+            var listModelConfig = {
+                remote: {
+                    ajaxConfig: {
+                        url: ctwc.getProjectsURL({name: domain})
+                    },
+                    dataParser: function(response) {
+                        return  $.map(response.projects, function (n, i) {
+                            return {
+                                fq_name: n.fq_name.join(':'),
+                                name: n.fq_name[1],
+                                value: n.uuid
+                            };
+                        });
+                    },
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                },
+                cacheConfig : {
+                    ucid: ctwc.get(ctwc.UCID_BC_DOMAIN_ALL_PROJECTS, domain),
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.PROJECT_CACHE_UPDATE_INTERVAL
+                }
+            };
+
+            var contrailListModel = new ContrailListModel(listModelConfig);
+
+            return contrailListModel;
+        };
+
+        this.getNetworkListModelConfig = function (projectFQN) {
+            return {
+                remote: {
+                    ajaxConfig: {
+                        url: ctwc.get(ctwc.URL_PROJECT_ALL_NETWORKS, projectFQN)
+                    },
+                    dataParser: ctwp.parseNetwork4Breadcrumb,
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                },
+                cacheConfig : {
+                    ucid: ctwc.get(ctwc.UCID_BC_PROJECT_ALL_NETWORKS, projectFQN),
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.NETWORK_CACHE_UPDATE_INTERVAL
+                }
+            };
+        };
+
+        this.getNetworks4Project = function(projectFQN) {
+            var listModelConfig = {
+                remote: {
+                    ajaxConfig: {
+                        url: ctwc.get(ctwc.URL_PROJECT_ALL_NETWORKS, projectFQN)
+                    },
+                    dataParser: ctwp.parseNetwork4Breadcrumb,
+                    failureCallback: function(xhr, ContrailListModel) {
+                        var dataErrorTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                            dataErrorConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText});
+
+                        $(contentContainer).html(dataErrorTemplate(dataErrorConfig));
+                    }
+                },
+                cacheConfig : {
+                    ucid: ctwc.get(ctwc.UCID_BC_PROJECT_ALL_NETWORKS, projectFQN),
+                    loadOnTimeout: false,
+                    cacheTimeout: cowc.NETWORK_CACHE_UPDATE_INTERVAL
+                }
+            };
+
+            var contrailListModel = new ContrailListModel(listModelConfig);
+
+            return contrailListModel;
+        };
+
+
+        this.deleteCGridData = function(data) {
+            if ('cgrid' in data) {
+                delete data['cgrid'];
+            }
+            if ('errors' in data) {
+                delete data['errors'];
+            }
+            if ('locks' in data) {
+                delete data['locks'];
+            }
+            if ('elementConfigMap' in data) {
+                delete data['elementConfigMap'];
+            }
+            return data;
+        };
+
+        this.renderView = function (renderConfig, renderCallback) {
+            var parentElement = renderConfig['parentElement'],
+                viewName = renderConfig['viewName'],
+                viewPathPrefix, viewPath,
+                model = renderConfig['model'],
+                viewAttributes = renderConfig['viewAttributes'],
+                modelMap = renderConfig['modelMap'],
+                rootView = renderConfig['rootView'],
+                onAllViewsRenderCompleteCB = renderConfig['onAllViewsRenderCompleteCB'],
+                onAllRenderCompleteCB = renderConfig['onAllRenderCompleteCB'],
+                lazyRenderingComplete  = renderConfig['lazyRenderingComplete'],
+                elementView;
+
+            /**
+             * if views are dynamically loaded using viewPathPrefix in a viewConfig, the path should prefix
+             * with 'core-basedir' as depending on the env, the root dir from which the files are served changes.
+             */
+            if (contrail.checkIfExist(renderConfig['viewPathPrefix'])) {
+                viewPathPrefix =  renderConfig['viewPathPrefix'];
+                // If viewPathPrefix doesn't start with core-basedir or controller-basedir add controller-basedir
+                if (!(viewPathPrefix.slice(0, 'core-basedir'.length) === 'core-basedir') &&
+                    !(viewPathPrefix.slice(0, 'controller-basedir'.length) === 'controller-basedir')) {
+                    viewPathPrefix =  'controller-basedir/' + viewPathPrefix;
+                }
+            } else {
+                viewPathPrefix = './';
+            }
+            viewPath = viewPathPrefix + viewName;
+            var checkRequirePath = viewPath.replace(/^core-basedir\//,'').replace(/^controller-basedir\//,'');
+            var pathMapping = _.invert(require.s.contexts._.config.paths);
+            pathMapping = {
+                 'monitor/infrastructure/common/ui/js/views/VRouterScatterChartView' : 'vrouter-scatterchart-view'
+            }
+            // viewPath = ifNull(pathMapping[checkRequirePath],viewPath);
+            require([viewPath], function(ElementView) {
+                elementView = new ElementView({el: parentElement, model: model, attributes: viewAttributes, rootView: rootView, onAllViewsRenderCompleteCB: onAllViewsRenderCompleteCB, onAllRenderCompleteCB: onAllRenderCompleteCB});
+                elementView.viewName = viewName;
+                elementView.modelMap = modelMap;
+                elementView.beginMyViewRendering();
+                elementView.render();
+                if(contrail.checkIfFunction(renderCallback)) {
+                    renderCallback(elementView);
+                }
+
+                if(lazyRenderingComplete == null || !lazyRenderingComplete) {
+                    elementView.endMyViewRendering();
+                }
+            });
+        };
+
+        this.getDetailTemplateConfigToDisplayRawJSON = function (){
+            return {
+                template:
+                    cowu.generateDetailTemplateHTML(this.getDetailsTemplateWithRawJSON(),
+                                                    cowc.APP_CONTRAIL_CONTROLLER)
+            }
+        };
+
+        this.getDetailsTemplateWithRawJSON = function () {
+            return{
+                templateGenerator: 'ColumnSectionTemplateGenerator',
+                advancedViewOptions :false,
+                 templateGeneratorConfig: {
+                     columns: [
+                         {
+                             rows: [
+                                 {
+                                     templateGenerator: 'BlockAdvancedOnlyTemplateGenerator',
+                                     templateGeneratorData : 'raw_json'
+                                 }
+                             ]
+                         }
+                     ]
+                 }
+            }
+        };
+        this.setGlobalVariable = function(key, value) {
+            utilVariable[key] = value;
+        };
+        this.getGlobalVariable = function(key) {
+            return utilVariable[key];
+        };
+        this.getAllGlobalVariable = function() {
+            return utilVariable;
+        };
+        // Accept fqname as array and
+        // currentDomainProject as string format domain:project
+        // if currentDomainProject is empty it will try taking utilVariable
+        // Output will be in the format "element(domain:project)"
+        this.formatCurrentFQName = function(argFqname, currentDomainProject){
+            var domain = "", project = "";
+            var fqname = _.clone(argFqname);
+            if(currentDomainProject != null && currentDomainProject != ""){
+                var domainProjectArr = currentDomainProject.split(":");
+                if(domainProjectArr.length === 2) {
+                    domain = domainProjectArr[0];
+                    project = domainProjectArr[1];
+                }
+            } else if(utilVariable["domain"] != null &&
+                      utilVariable["project"] != null){
+                domain = utilVariable["domain"].name;
+                project = utilVariable["project"].name;
+            } else {
+                return false;
+            }
+            if(fqname.length >= 3) {
+                if(fqname[0] == domain && fqname[1] == project) {
+                    return fqname[fqname.length-1];
                 } else {
-                    return getUUIDByName(fqName);
+                    var element = fqname[fqname.length-1];
+                    var parent = fqname.splice(0,fqname.length-1);
+                    return element + " (" + parent.join(":") + ")";
                 }
             }
         };
 
-        self.renderView = function (viewName, parentElement, model, viewAttributes, modelMap) {
-            var elementView;
+        this.onClickNetworkMonitorGrid = function (e, selRowDataItem) {
+            if (!$(e.target).hasClass('cell-no-link')) {
+                var name = $(e.target).attr('name'),
+                    fqName, uuid, vmName;
 
-            switch (viewName) {
-                case "NetworkingGraphView":
-                    elementView = new NetworkingGraphView({ el: parentElement, model: model, attributes: viewAttributes });
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
+                if ($.inArray(name, ['project']) > -1) {
+                    fqName = selRowDataItem['name'];
+                    ctwu.setProjectURLHashParams(null, fqName, true)
 
-                case "ProjectListView":
-                    elementView = new ProjectListView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "ProjectGridView":
-                    elementView = new ProjectGridView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "ProjectTabView":
-                    elementView = new ProjectTabView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "NetworkListView":
-                    elementView = new NetworkListView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "NetworkTabView":
-                    elementView = new NetworkTabView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "NetworkGridView":
-                    elementView = new NetworkGridView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "InstanceListView":
-                    elementView = new InstanceListView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "InstanceTabView":
-                    elementView = new InstanceTabView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "InstanceGridView":
-                    elementView = new InstanceGridView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "FlowListView":
-                    elementView = new FlowListView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "FlowGridView":
-                    elementView = new FlowGridView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "InstanceView":
-                    elementView = new InstanceView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "InstanceTrafficStatsView":
-                    elementView = new InstanceTrafficStatsView({ el: parentElement, model: model, attributes: viewAttributes });
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "ProjectView":
-                    elementView = new ProjectView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "NetworkView":
-                    elementView = new NetworkView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "ConnectedNetworkTabView":
-                    elementView = new ConnectedNetworkTabView({ el: parentElement, model: model, attributes: viewAttributes });
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "ConnectedNetworkTrafficStatsView":
-                    elementView = new ConnectedNetworkTrafficStatsView({ el: parentElement, model: model, attributes: viewAttributes });
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "AlarmListView":
-                    elementView = new AlarmListView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "AlarmGridView":
-                    elementView = new AlarmGridView({el: parentElement, model: model, attributes: viewAttributes});
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
-
-                case "InterfaceGridView":
-                    elementView = new InterfaceGridView({ el: parentElement, model: model, attributes: viewAttributes });
-                    elementView.modelMap = modelMap;
-                    elementView.render();
-                    break;
+                } else if ($.inArray(name, ['network']) > -1) {
+                    fqName = selRowDataItem['name'];
+                    ctwu.setNetworkURLHashParams(null, fqName, true)
+                } else if ($.inArray(name, ['vn']) > -1) {
+                    fqName = selRowDataItem['vnFQN'];
+                    ctwu.setNetworkURLHashParams(null, fqName, true)
+                } else if ($.inArray(name, ['instance']) > -1) {
+                    fqName = selRowDataItem['vnFQN'];
+                    uuid = selRowDataItem['name'];
+                    vmName = selRowDataItem['vmName'];
+                    if (contrail.checkIfExist(fqName) && !ctwu.isServiceVN(fqName)) {
+                        ctwu.setInstanceURLHashParams(null, fqName, uuid, vmName, true);
+                    }
+                } else if ($.inArray(name, ['vRouter']) > -1) {
+                    var urlObj = layoutHandler.getURLHashObj();
+                    if (urlObj['p'] == 'mon_infra_vrouter' &&
+                        urlObj['q']['view'] == 'details') {
+                        $("#" + ctwl.VROUTER_DETAILS_TABS_ID).tabs({active: 0});
+                    } else {
+                        var hashObj = {
+                            type: 'vrouter',
+                            view: 'details',
+                            focusedElement: {
+                                node: selRowDataItem['vRouter'],
+                                tab: 'details'
+                            }
+                        };
+                        layoutHandler.setURLHashParams(hashObj,
+                            {
+                                p: "mon_infra_vrouter",
+                                merge: false,
+                                triggerHashChange: true
+                            }
+                        );
+                    }
+                }
             }
         };
-    }
 
+        this.setProjectURLHashParams = function(hashParams, projectFQN, triggerHashChange) {
+            var hashObj = {
+                type: "project",
+                view: "details",
+                focusedElement: {
+                    fqName: projectFQN,
+                    type: ctwc.GRAPH_ELEMENT_PROJECT
+                }
+            };
+
+            if(contrail.checkIfKeyExistInObject(true, hashParams, 'clickedElement')) {
+                hashObj.clickedElement = hashParams.clickedElement;
+            }
+
+            layoutHandler.setURLHashParams(hashObj, {p: "mon_networking_projects", merge: false, triggerHashChange: triggerHashChange});
+
+        };
+
+        this.setProject4NetworkListURLHashParams = function(projectFQN) {
+            var hashObj = {
+                type: "network",
+                view: "list"
+            };
+
+            if (projectFQN != null) {
+                hashObj.project = projectFQN;
+            }
+
+            layoutHandler.setURLHashParams(hashObj, {p: "mon_networking_networks", merge: false, triggerHashChange: false});
+        };
+
+        this.setNetworkURLHashParams = function(hashParams, networkFQN, triggerHashChange) {
+            var hashObj = {
+                type: "network",
+                view: "details",
+                focusedElement: {
+                    fqName: networkFQN,
+                    type: ctwc.GRAPH_ELEMENT_NETWORK
+                }
+            };
+
+            if(contrail.checkIfKeyExistInObject(true, hashParams, 'clickedElement')) {
+                hashObj.clickedElement = hashParams.clickedElement;
+            }
+
+            layoutHandler.setURLHashParams(hashObj, {p: "mon_networking_networks", merge: false, triggerHashChange: triggerHashChange});
+
+        };
+
+        this.setNetwork4InstanceListURLHashParams = function(extendedHashObj) {
+            var hashObj = $.extend(true, {
+                    type: "instance",
+                    view: "list"
+                }, extendedHashObj);;
+
+            layoutHandler.setURLHashParams(hashObj, {p: "mon_networking_instances", merge: false, triggerHashChange: false});
+        };
+
+        this.setInstanceURLHashParams = function(hashParams, networkFQN, instanceUUID, vmName, triggerHashChange) {
+            var hashObj = {
+                type: "instance",
+                view: "details",
+                focusedElement: {
+                    fqName: networkFQN,
+                    type: ctwc.GRAPH_ELEMENT_INSTANCE,
+                    uuid: instanceUUID,
+                    vmName: vmName
+                }
+            };
+
+            if(contrail.checkIfKeyExistInObject(true, hashParams, 'clickedElement')) {
+                hashObj.clickedElement = hashParams.clickedElement;
+            }
+
+            layoutHandler.setURLHashParams(hashObj, {p: "mon_networking_instances", merge: false, triggerHashChange: triggerHashChange});
+        };
+
+
+        this.formatValues4TableColumn = function (valueArray) {
+            var formattedStr = '',
+            entriesToShow = 2;
+
+            if (valueArray == null) {
+                return formattedStr;
+            }
+
+            $.each(valueArray, function (idx, value) {
+                if (idx == 0) {
+                    formattedStr += value;
+                } else if (idx < entriesToShow) {
+                    formattedStr += '<br/>' + value;
+                } else {
+                    return;
+                }
+            });
+
+            if (valueArray.length > 2) {
+                formattedStr += '<br/>' + contrail.format('({0} more)', valueArray.length - entriesToShow);
+            }
+
+            return formattedStr;
+        };
+
+     // This function accepts array of ips, checks the type(IPv4/IPv6) and
+        // returns the label value html content of the first two elements of the array and more tag.
+        this.formatIPArray = function(ipArray) {
+            var formattedStr = '', entriesToShow = 2;
+
+            if (ipArray == null) {
+                return formattedStr;
+            }
+
+            $.each(ipArray, function (idx, value) {
+                var lbl = 'IPv4', isIpv6 = false;
+                isIpv6 = isIPv6(value);
+                if (idx == 0) {
+                    formattedStr += getLabelValueForIP(value);
+                } else if (idx < entriesToShow) {
+                    formattedStr += "<br/>" + getLabelValueForIP(value);
+                }
+                else
+                    return;
+            });
+
+            if (ipArray.length > 2) {
+                formattedStr += '<br/>' + contrail.format('({0} more)', ipArray.length - entriesToShow);
+            }
+
+            return contrail.format(formattedStr);
+        };
+
+        /** 
+         * As "Alerts" link in header can be clicked from any page,it need to know the list 
+         * of nodeListModels to loop through to generate alerts. 
+         * Return the require Aliases/URLs of all listModels for which alerts need to be processed
+         */
+        this.getNodeListModelsForAlerts = function(defObj) {
+            return ['monitor-infra-analyticsnode-model','monitor-infra-databasenode-model',
+                'monitor-infra-confignode-model','monitor-infra-controlnode-model',
+                'monitor-infra-vrouter-model'];
+        };
+
+        /**
+         * If a resource's display_name is not set then use name
+         */
+        this.getDisplayNameOrName = function (cfgModel) {
+            var displayName = getValueByJsonPath(cfgModel, 'display_name', "");
+            var name = getValueByJsonPath(cfgModel, 'name', "");
+
+            if (displayName.length) {
+                return displayName;
+            } else {
+                return name;
+            }
+        };
+
+        /**
+         * Set a resource's name from display_name
+         */
+        this.setNameFromDisplayName = function (cfgModel) {
+            var displayName = getValueByJsonPath(cfgModel, 'display_name', "");
+            var name = getValueByJsonPath(cfgModel, 'name', "");
+            if (name == '') {
+                cfgModel['name'] = displayName;
+            }
+        };
+        /**
+         * Set a resource's display_name from name
+         */
+        this.setDisplayNameFromName = function (cfgModel) {
+            var displayName = getValueByJsonPath(cfgModel, 'display_name', "");
+            var name = getValueByJsonPath(cfgModel, 'name', "");
+            if ('' == displayName) {
+                cfgModel['display_name'] = name;
+            }
+        };
+
+        /**
+         * Used to Clean traces of DOM when navigate away from the page
+         */
+        this.destroyDOMResources = function(prefixId) {
+            $("#configure-" + prefixId).remove();
+        };
+
+        /**
+         * Used to remove any error message for an element specified by path
+         */
+        this.removeAttrErrorMsg = function(model, path) {
+            if ((null == model) || (null == path)) {
+                return;
+            }
+            var attr = cowu.getAttributeFromPath(path);
+            var errors = model.get(cowc.KEY_MODEL_ERRORS);
+            var attrErrorObj = {};
+            attrErrorObj[attr + cowc.ERROR_SUFFIX_ID] = null;
+            errors.set(attrErrorObj);
+        };
+    };
+
+    this.permissionFormatter =  function(v, dc) {
+        var retStr = "";
+        switch (Number(v)) {
+            case 1:
+                retStr = "Refer";
+                break;
+            case 2:
+                retStr = "Write";
+                break;
+            case 3:
+                retStr = "Write, Refer";
+                break;
+            case 4:
+                retStr = "Read";
+                break;
+            case 5:
+                retStr = "Read, Refer";
+                break;
+            case 6:
+                retStr = "Read, Write";
+                break;
+            case 7:
+                retStr = "Read, Write, Refer";
+                break;
+            default:
+                retStr = "-";
+                break;
+        };
+        return retStr;
+    };
+
+    this.sharedPermissionFormatter = function(v, dc) {
+        var formattedSharedPerms = "", sharedPermsStr = "",
+            sharedPerms =  getValueByJsonPath(dc, "perms2;share", []),
+            i, sharedPermsCnt = sharedPerms.length;
+        if(sharedPermsCnt) {
+            for(i = 0; i < sharedPermsCnt; i++) {
+                if(sharedPerms[i]) {
+                    sharedPermsStr += "<tr style='vertical-align:top'><td>";
+                    sharedPermsStr += sharedPerms[i].tenant + "</td><td>";
+                    sharedPermsStr +=
+                        permissionFormatter(sharedPerms[i].tenant_access) +
+                        "</td><td>";
+                    sharedPermsStr += "</tr>";
+                }
+            }
+            if(sharedPermsStr) {
+                formattedSharedPerms =
+                    "<table style='width:100%'><thead><tr>" +
+                    "<th style='width:40%'>Project</th>" +
+                    "<th style='width:60%'>Permissions</th>" +
+                    "</tr></thead><tbody>";
+                formattedSharedPerms += sharedPermsStr;
+                formattedSharedPerms += "</tbody></table>";
+            }
+        } else {
+            formattedSharedPerms = "-";
+        }
+        return formattedSharedPerms;
+    };
     return CTUtils;
 });

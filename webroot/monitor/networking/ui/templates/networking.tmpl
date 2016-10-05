@@ -3,55 +3,36 @@
 -->
 
 <script type="text/x-handlebars-template" id="core-networking-graph-template">
-	<div class="row-fluid visualization-container">
+	<div class="visualization-container">
 		<div class="graph-canvas" style="height: 300px; overflow: hidden;">
-            <div id="networking-graph" class="graph row-fluid colmask holygrail">
+            <div id="networking-graph" class="graph colmask holygrail">
 			    <div class="colmid">
 			        <div class="colleft">
 			            <div class="col1wrap">
 			                <div class="col1">
-								<div id="graph-connected-elements" class="graph-connected-elements row-fluid">
-                                    <div id="graph-loading" class="graph-loading loading-spinner"><i class="icon-refresh icon-spin"></i></div>
+								<div id="graph-connected-elements" class="graph-connected-elements row">
 								</div>
 							</div>
 			            </div>
 			            <div class="col2">
-							<div id="graph-config-elements" class="graph-config-elements row-fluid"></div>
+							<div id="graph-config-elements" class="graph-config-elements"></div>
 			            </div>
-			            <div id="graph-control-panel" class="col3">
-						</div>
+			            <div id="graph-control-panel" class="col3"></div>
 					</div>
 				</div>
+                <div class="graph-search-control-panel-expanded-container control-panel-expanded-container hide"></div>
+                <div id="graph-loading" class="graph-loading">
+                     <p class="loading-message">Loading..<p>
+                </div>
+
 			</div>
 		</div>
 	</div>
 </script>
 
-<script type="text/x-handlebars-template" id="core-chart-template">
-    <div class="row-fluid">
-        {{#each this.elementConfg}}
-            <div id="charts-box" class="{{#getValue "{\"1\":\"span12\",\"2\":\"span6\",\"3\":\"span4\"}" ../colCount}}{{/getValue}} widget-box transparent">
-                <div class="widget-header">
-                    <h4 class="smaller">
-                        <i id="charts-loading" class="icon-spinner icon-spin blue bigger-125"></i> {{title}}
-                    </h4>
-                    <div class="widget-toolbar pull-right">
-                        <a data-action="collapse">
-                            <i class="icon-chevron-up"></i>
-                        </a>
-                    </div>
-                </div>
-                <div class="widget-body">
-                    <div class="widget-main" style="height:300px;">
-                        {{#IfCompare @index 1 operator='%2'}}
-                            <div class="stack-chart negate" id="{{../../id}}_{{@index}}"></div>
-                        {{else}}
-                            <div class="stack-chart" id="{{../../id}}_{{@index}}"></div>
-                        {{/IfCompare}}
-                    </div>
-                </div>
-            </div>
-        {{/each}}
+<script type="text/x-handlebars-template" id="graph-control-panel-search-template">
+    <div class="row">
+        <input class="graph-control-panel-search-dropdown" type="text"/>
     </div>
 </script>
 

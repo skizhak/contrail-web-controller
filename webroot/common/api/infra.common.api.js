@@ -19,6 +19,8 @@ var commonUtils = require(process.mainModule.exports["corePath"] +
                         '/src/serverroot/errors/app.errors'),
     redisUtils = require(process.mainModule.exports["corePath"] +
                          '/src/serverroot/utils/redis.utils'),
+    rest = require(process.mainModule.exports["corePath"] +
+            '/src/serverroot/common/rest.api'),
     async = require('async');
 
 var redisInfraClient = null;
@@ -69,7 +71,7 @@ function getModInstName (genName)
     if (null == genName) {
         return null;
     }
-    /* Generator Name field is a combination of 
+    /* Generator Name field is a combination of
        hostname:type:module:instId
        This function returns type:module:instId
      */
@@ -94,7 +96,7 @@ function updateGeneratorInfo (resultJSON, genInfo, hostName, moduleNames)
         try {
             modStr = getModInstName(genInfo[i]['name']);
             resultJSON[modStr] = {};
-            resultJSON[modStr] = 
+            resultJSON[modStr] =
                 commonUtils.copyObject(resultJSON[modStr], genInfo[i]['value']);
         } catch(e) {
         }
@@ -246,7 +248,7 @@ function getvRouterAsyncResp (dataObj, callback)
             postData['kfilt'] = dataObj['kfilt'];
         }
         var url = '/analytics/uves/vrouter';
-        opApiServer.apiPost(url, postData, dataObj['appData'], 
+        opApiServer.apiPost(url, postData, dataObj['appData'],
                             function(err, data) {
             callback(null, data);
         });
@@ -287,17 +289,22 @@ function getvRouterSummaryConfigUVEData (configData, vrConf, nodeList, addGen,
     }
     reqUrl = '/analytics/uves/vrouter';
     var cfilt = ['VrouterStatsAgent:cpu_info',
+        'VrouterStatsAgent:phy_if_5min_usage',
         'VrouterAgent:virtual_machine_list',
         'VrouterAgent:self_ip_list',
+        'VrouterAgent:vn_count',
         'VrouterAgent:xmpp_peer_list',
         'VrouterAgent:total_interface_count',
-        'VrouterAgent:down_interface_count', 'VrouterAgent:connected_networks',
+        'VrouterAgent:down_interface_count',
         'VrouterAgent:control_ip', 'VrouterAgent:build_info',
-        'VrouterStatsAgent:cpu_share', 'NodeStatus'];
+        'VrouterStatsAgent:cpu_share', 'NodeStatus',
+        'VrouterAgent:sandesh_http_port',
+        'VrouterAgent:platform',
+        'VrouterAgent:control_ip', 'UVEAlarms'];
     var postData = {};
     if (null != nodeList) {
         var nodeCnt = nodeList.length;
-        var postDataIncrCnt = 
+        var postDataIncrCnt =
             Math.ceil(nodeCnt / global.VROUTER_COUNT_IN_JOB);
         var idx = 0;
         for (var i = 0; i < postDataIncrCnt; i++) {
@@ -321,7 +328,7 @@ function getvRouterSummaryConfigUVEData (configData, vrConf, nodeList, addGen,
         dataObjArr[0 + 1]['configData'] = false;
     }
     /* As Config Data we are already getting, so check if we have got Config or
-     * not 
+     * not
      */
     if (!dataObjArr[0].length) {
         /* We did not get config data */
@@ -499,12 +506,12 @@ function getvRouterList (appData, callback)
     });
 }
 
-function addGeneratorInfoToUVE (postData, uve, host, modules, callback)
+function addGeneratorInfoToUVE (postData, uve, host, modules, appData, callback)
 {
     var resultJSON = {};
     var url = '/analytics/uves/generator';
 
-    opServer.api.post(url, postData,
+    opApiServer.apiPost(url, postData, appData,
                       commonUtils.doEnsureExecution(function(err, data) {
         if ((null != err) || (null == data) || (null == data['value'])) {
             callback(null, uve);
@@ -527,8 +534,11 @@ function addGeneratorInfoToUVE (postData, uve, host, modules, callback)
             } catch(e) {
             }
         }
-        resultJSON = commonUtils.copyObject(resultJSON, uve);
-        callback(null, resultJSON);
+        if (null == uve['derived-uve']) {
+            uve['derived-uve'] = {}
+        }
+        uve['derived-uve'] = commonUtils.copyObject(uve['derived-uve'], resultJSON);
+        callback(null, uve);
     }, global.DEFAULT_CB_TIMEOUT));
 }
 
@@ -551,7 +561,7 @@ function filterOutGeneratorInfoFromGenerators(excludeProcessList, resultJSON)
 
 function getUVEByUrlAndSendData (url, errResponse, res, appData)
 {
-    opServer.api.get(url, function(err, data) {
+    opApiServer.apiGet(url, appData, function(err, data) {
         if (err || (null == data)) {
             commonUtils.handleJSONResponse(err, res, errResponse);
         } else {
@@ -573,12 +583,12 @@ function sortUVEList (uveEntry1, uveEntry2)
 function sendSandeshRequest (req, res, dataObjArr, restAPI)
 {
     async.map(dataObjArr,
-              commonUtils.getServerRespByRestApi(restAPI, true),
+              commonUtils.getServerRespByRestApi(restAPI, false),
               function(err, data) {
-        if (data) {
+        if ((null == err) && (null != data)) {
             commonUtils.handleJSONResponse(null, res, data);
         } else {
-            commonUtils.handleJSONResponse(null, res, []);
+            sendServerRetrieveError(res);
         }
     });
 }
@@ -745,7 +755,7 @@ function getServerResponseByModType (req, res, appData)
 function getDataFromConfigNode (str, hostName, appData, data, callback)
 {
     var url = '/' + str;
-    data['nodeStatus'] = 'Down';
+    data['derived-uve']['nodeStatus'] = 'Down';
     configApiServer.apiGet(url, appData,
                            commonUtils.doEnsureExecution(function(err, configData) {
         if ((null != err) || (null == configData)) {
@@ -780,9 +790,12 @@ function getDataFromConfigNode (str, hostName, appData, data, callback)
         }
         configApiServer.apiGet(url, appData,
                                commonUtils.doEnsureExecution(function(err, configData) {
-            data['ConfigData'] = {};
-            data['ConfigData'] = configData;
-            data['nodeStatus'] = 'Up';
+            if (null == data['derived-uve']) {
+                data['derived-uve'] = {};
+            }
+            data['derived-uve']['ConfigData'] = {};
+            data['derived-uve']['ConfigData'] = configData;
+            data['derived-uve']['nodeStatus'] = 'Up';
             callback(null, data);
         }, global.DEFAULT_CB_TIMEOUT));
     }, global.DEFAULT_CB_TIMEOUT));
@@ -790,7 +803,7 @@ function getDataFromConfigNode (str, hostName, appData, data, callback)
 
 /* Function: getSandeshData
    Req URL:  /api/admin/monitor/infrastructure/get-sandesh-data
-   Generic API to get Sandesh data 
+   Generic API to get Sandesh data
    Ex: Client POST body format:
    {"data":{"ip":"nodeXX","port":"8085","url":"/Snh_VmListReq?uuid="}}
   */
@@ -825,10 +838,43 @@ function getSandeshData (req, res, appData)
     }, global.DEFAULT_MIDDLEWARE_API_TIMEOUT));
 }
 
+function getConfigApiNetworkReachableIP (dataObj, callback)
+{
+    var ip = dataObj['ip'];
+    var port = dataObj['port'];
+    var req = dataObj['req'];
+    var resultJSON = {};
+
+    var userRoles = req.session.userRoles;
+    var authApi = require(process.mainModule.exports["corePath"] +
+        '/src/serverroot/common/auth.api');
+    var adminProjectList = authApi.getAdminProjectList(req);
+    var headers = {};
+
+    if ((null != adminProjectList) && (adminProjectList.length > 0)) {
+        var adminProject = adminProjectList[0];
+        headers['X_API_ROLE'] = req.session.userRoles[adminProject].join(',');
+        headers['X-AUTH-TOKEN'] =
+            req.session.tokenObjs[adminProject]['token']['id'];
+    }
+    var newConfigRESTServer =
+        rest.getAPIServer({apiName: global.label.VNCONFIG_API_SERVER,
+                           server: ip, port: port});
+    var apiUrl = '/';
+    newConfigRESTServer.api.get(apiUrl,
+            commonUtils.doEnsureExecution(function(err, data) {
+        resultJSON['ip'] = ip;
+        resultJSON['port'] = port;
+        callback(null, resultJSON);
+    }, 10000), headers);
+}
+
 function getNetworkReachableIP (dataObj, callback)
 {
     var ip = dataObj['ip'];
     var port = dataObj['port'];
+    var req = dataObj['req'];
+    var isConfig = dataObj['isConfig'];
     var resultJSON = {};
     var options = {};
     options['method'] = 'GET';
@@ -840,6 +886,11 @@ function getNetworkReachableIP (dataObj, callback)
     options['uri'] = nwReachReqUrl;
     resultJSON['error'] = null;
     resultJSON['data'] = null;
+
+    if ('true' == isConfig) {
+        getConfigApiNetworkReachableIP(dataObj, callback);
+        return;
+    }
 
     request(options, commonUtils.doEnsureExecution(function(err, data) {
         if ((err === undefined) && (data === undefined)) {
@@ -895,16 +946,18 @@ function getReachableIP (req, res, appData)
     var data = postBody['data'];
     var len = data.length;
     for (var i = 0; i < len; i++) {
-        if (false == checkValidIP(data[i]['ip'])) {
-            continue;
-        }
         if ((null == data[i]['ip']) || (null == data[i]['port'])) {
             error = new appErrors.RESTServerError('IP/PORT not found in post ' +
                                                   ' body in ' + i + 'th index');
             commonUtils.handleJSONResponse(error, res, null);
             return;
         }
-        dataObjArr.push({'ip': data[i]['ip'], 'port': data[i]['port']});
+        var isConfig = false;
+        if (null != data[i]['isConfig']) {
+            isConfig = data[i]['isConfig'];
+        }
+        dataObjArr.push({'ip': data[i]['ip'], 'port': data[i]['port'],
+                         'req': req, isConfig: isConfig});
     }
 
     async.map(dataObjArr, getNetworkReachableIP, function(err, data) {
@@ -929,10 +982,22 @@ function saveNodesHostIPToRedis (data, nodeType, callback)
     var hash = 'node-hash';
     var portList = proxyApi.getAllowedProxyPortListByNodeType(nodeType);
     for (key in data['hosts']) {
-        data['hosts'][key] = portList;
+        if ((data['hosts'][key] instanceof Array) &&
+            (portList instanceof Array)) {
+            data['hosts'][key] = data['hosts'][key].concat(portList);
+        } else {
+            /* We must not come here */
+            data['hosts'][key] = portList;
+        }
     }
     for (key in data['ips']) {
-        data['ips'][key] = portList;
+        if ((data['ips'][key] instanceof Array) &&
+            (portList instanceof Array)) {
+            data['ips'][key] = data['ips'][key].concat(portList);
+        } else {
+            /* We must not come here */
+            data['ips'][key] = portList;
+        }
     }
     data = JSON.stringify(data);
     if (null == redisInfraClient) {
@@ -990,6 +1055,37 @@ function getvRtrIntrospectPortByJobData (jobData)
     return global.SANDESH_COMPUTE_NODE_PORT;
 }
 
+function sendServerRetrieveError (res)
+{
+    var error = new appErrors.RESTServerError(global.STR_CACHE_RETRIEVE_ERROR);
+    commonUtils.handleJSONResponse(error, res, null);
+}
+function getUVEKeys (req, res, appData) {
+    var url = '/analytics/uve-types';
+    var isProject = req.query['isProject'],
+        globalUVEKeys = [],
+        projectUVEKeys = [],
+        uveKeys = [];
+    opApiServer.apiGet(url, appData,
+        function(err, data) {
+            if (err || (null == data)) {
+                commonUtils.handleJSONResponse(err, res, null);
+            } else {
+                for(var key in data) {
+                    if (data[key] != null) {
+                        var uveObj = data[key];
+                        globalUVEKeys.push(key);
+                        if (uveObj['global_system_object'] == false) {
+                            projectUVEKeys.push(key);
+                        }
+                    }
+                }
+                uveKeys = (isProject === 'true') ? projectUVEKeys : globalUVEKeys;
+                commonUtils.handleJSONResponse(null, res, uveKeys);
+            }
+    });
+}
+exports.getUVEKeys = getUVEKeys;
 exports.dovRouterListProcess = dovRouterListProcess;
 exports.checkAndGetSummaryJSON = checkAndGetSummaryJSON;
 exports.getvRouterList = getvRouterList;
@@ -1013,3 +1109,5 @@ exports.getvRouetrIntrospectPort = getvRouetrIntrospectPort;
 exports.fillIntrospectPortInJobData = fillIntrospectPortInJobData;
 exports.getvRouetrIntrospectPortByReq = getvRouetrIntrospectPortByReq;
 exports.getvRtrIntrospectPortByJobData = getvRtrIntrospectPortByJobData;
+exports.sendServerRetrieveError = sendServerRetrieveError;
+

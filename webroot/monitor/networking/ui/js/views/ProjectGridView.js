@@ -4,46 +4,34 @@
 
 define([
     'underscore',
-    'backbone'
-], function (_, Backbone) {
-    var ProjectGridView = Backbone.View.extend({
+    'contrail-view'
+], function (_, ContrailView) {
+    var ProjectGridView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
-            var that = this,
+            var self = this,
                 viewConfig = this.attributes.viewConfig,
                 pagerOptions = viewConfig['pagerOptions'];
 
             var projectsRemoteConfig = {
-                url: networkPopulateFns.getProjectsURL(ctwc.DEFAULT_DOMAIN),
+                url: ctwc.getProjectsURL({name: ctwc.COOKIE_DOMAIN}, {getProjectsFromIdentity: true}),
                 type: 'GET'
             };
 
-            cowu.renderView4Config(that.$el, this.model, getProjectListViewConfig(projectsRemoteConfig, pagerOptions));
+            this.renderView4Config(self.$el, this.model, getProjectListViewConfig(projectsRemoteConfig, pagerOptions));
         }
     });
 
     var getProjectListViewConfig = function (projectsRemoteConfig, pagerOptions) {
         return {
-            elementId: cowu.formatElementId([ctwl.MONITOR_PROJECT_LIST_VIEW_ID]),
-            view: "SectionView",
+            elementId: ctwl.PROJECTS_GRID_ID,
+            title: ctwl.TITLE_PROJECTS,
+            view: "GridView",
             viewConfig: {
-                rows: [
-                    {
-                        columns: [
-                            {
-                                elementId: ctwl.PROJECTS_GRID_ID,
-                                title: ctwl.TITLE_PROJECTS,
-                                view: "GridView",
-                                viewConfig: {
-                                    elementConfig: getProjectGridConfig(projectsRemoteConfig, pagerOptions)
-                                }
-                            }
-                        ]
-                    }
-                ]
+                elementConfig: getProjectGridConfig(projectsRemoteConfig, pagerOptions)
             }
-        }
+        };
     };
 
     var getProjectGridConfig = function (projectsRemoteConfig, pagerOptions) {
@@ -65,21 +53,30 @@ define([
                     checkboxSelectable: false,
                     detail: {
                         template: cowu.generateDetailTemplateHTML(getProjectDetailsTemplateConfig(), cowc.APP_CONTRAIL_CONTROLLER)
-                    }
+                    },
+                    fixedRowHeight: 30
                 },
                 dataSource: {
                     remote: {
                         ajaxConfig: projectsRemoteConfig,
-                        hlRemoteConfig: ctwgc.getProjectDetailsHLazyRemoteConfig(),
-                        dataParser: ctwp.projectDataParser
+                        hlRemoteConfig: nmwgc.getProjectDetailsHLazyRemoteConfig(),
+                        dataParser: nmwp.projectDataParser
                     },
                     cacheConfig: {
-                        ucid: ctwc.UCID_DEFAULT_DOMAIN_PROJECT_LIST // TODO: Handle multi-tenancy
+                        ucid: ctwc.UCID_COOKIE_DOMAIN_PROJECT_LIST
+                    }
+                },
+                statusMessages: {
+                    loading: {
+                        text: 'Loading Projects..'
+                    },
+                    empty: {
+                        text: 'No Projects Found.'
                     }
                 }
             },
             columnHeader: {
-                columns: ctwgc.projectsColumns
+                columns: nmwgc.projectsColumns
             },
             footer: {
                 pager: contrail.handleIfNull(pagerOptions, { options: { pageSize: 5, pageSizeSelect: [5, 10, 50, 100] } })
@@ -99,7 +96,7 @@ define([
                         templateGeneratorConfig: {
                             columns: [
                                 {
-                                    class: 'span6',
+                                    class: 'col-xs-6',
                                     rows: [
                                         {
                                             title: ctwl.TITLE_PROJECT_DETAILS,
@@ -126,7 +123,7 @@ define([
                                     ]
                                 },
                                 {
-                                    class: 'span6',
+                                    class: 'col-xs-6',
                                     rows: [
                                         {
                                             title: ctwl.TITLE_TRAFFIC_DETAILS,
@@ -146,7 +143,8 @@ define([
                                                 {
                                                     key: 'egressFlowCount',
                                                     templateGenerator: 'TextGenerator'
-                                                },
+                                                }
+                                                /*
                                                 {
                                                     key: 'inBytes',
                                                     templateGenerator: 'TextGenerator',
@@ -160,7 +158,7 @@ define([
                                                     templateGeneratorConfig: {
                                                         formatter: 'byte'
                                                     }
-                                                },
+                                                }
                                                 {
                                                     key: 'inTpkts',
                                                     templateGenerator: 'TextGenerator'
@@ -168,7 +166,8 @@ define([
                                                 {
                                                     key: 'outTpkts',
                                                     templateGenerator: 'TextGenerator'
-                                                },
+                                                }
+                                                */
                                             ]
                                         }
                                     ]

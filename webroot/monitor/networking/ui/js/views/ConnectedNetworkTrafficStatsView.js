@@ -4,11 +4,11 @@
 
 define([
     'underscore',
-    'backbone',
-    'js/views/LineWithFocusChartView',
+    'contrail-view',
+    'core-basedir/js/views/LineWithFocusChartView',
     'contrail-list-model',
-], function (_, Backbone, LineWithFocusChartView, ContrailListModel) {
-    var ConnectedNetworkTrafficStatsView = Backbone.View.extend({
+], function (_, ContrailView, LineWithFocusChartView, ContrailListModel) {
+    var ConnectedNetworkTrafficStatsView = ContrailView.extend({
         render: function () {
             var connectedNetworkTrafficStatsTemplate = contrail.getTemplate4Id(ctwc.TMPL_TRAFFIC_STATS_TAB),
                 viewConfig = this.attributes.viewConfig,
@@ -71,10 +71,10 @@ define([
                     modelConfig: {
                         remote: {
                             ajaxConfig: {
-                                url: ctwc.get(ctwc.URL_CONNECTED_NETWORK_TRAFFIC_STATS, 60, selectedSourceVirtualNetwork, selectedDestinationVirtualNetwork, 120),
+                                url: ctwc.get(ctwc.URL_CONNECTED_NETWORK_TRAFFIC_STATS, 120, selectedSourceVirtualNetwork, selectedDestinationVirtualNetwork, 120),
                                 type: 'GET'
                             },
-                            dataParser: ctwp.vmTrafficStatsParser
+                            dataParser: nmwp.vmTrafficStatsParser
                         },
                         cacheConfig: {
                             ucid: ctwc.get(ctwc.UCID_CONNECTED_NETWORK_TRAFFIC_STATS_LIST, selectedSourceVirtualNetwork, selectedDestinationVirtualNetwork)

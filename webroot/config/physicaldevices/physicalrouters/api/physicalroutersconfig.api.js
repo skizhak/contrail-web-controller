@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2014 Juniper Networks, Inc. All rights reserved.
  */
- 
+
  /**
  * @physicalroutersconfig.api.js
  *     - Handlers for physical routers
@@ -26,7 +26,9 @@ var util        = require('util');
 var url         = require('url');
 var configApiServer = require(process.mainModule.exports["corePath"] +
                               '/src/serverroot/common/configServer.api');
-var async = require('async'); 
+var async = require('async');
+var jsonDiff      = require(process.mainModule.exports["corePath"] +
+'/src/serverroot/common/jsondiff');
 
 
 /**
@@ -36,7 +38,7 @@ var async = require('async');
  * 2. Reads the response from config api server
  *    and sends it back to the client.
  */
-function getPhysicalRoutersCb(error, physicalRoutersData, response) 
+function getPhysicalRoutersCb(error, physicalRoutersData, response)
 {
     if (error) {
         commonUtils.handleJSONResponse(error, response, null);
@@ -58,10 +60,10 @@ function getPhysicalRoutersList (request, response, appData)
             if (error) {
                commonUtils.handleJSONResponse(error, response, null);
                return;
-            }            
+            }
             commonUtils.handleJSONResponse(error, response, data);
         }
-    );             
+    );
 }
 
 /**
@@ -77,15 +79,15 @@ function getPhysicalRouters (request, response, appData)
      configApiServer.apiGet('/physical-routers', appData,
          function(error, data) {
              getPhysicalRoutersDetails(error, data, response, appData);
-         });             
+         });
 }
 
-function getPhysicalRoutersDetails(error, data, response, appData) 
+function getPhysicalRoutersDetails(error, data, response, appData)
 {
     var reqUrl            = null;
     var dataObjArr        = [];
     var i = 0, pRoutersLength  = 0;
-    
+
     if (error) {
        commonUtils.handleJSONResponse(error, response, null);
        return;
@@ -95,7 +97,7 @@ function getPhysicalRoutersDetails(error, data, response, appData)
         for(i = 0; i < pRoutersLength; i++) {
             reqUrl = '/physical-router/' +  data['physical-routers'][i]['uuid'];
             commonUtils.createReqObj(dataObjArr, reqUrl, global.HTTP_REQUEST_GET,
-                                    null, null, null, appData);        
+                                    null, null, null, appData);
         }
         if(dataObjArr.length > 0) {
             async.map(dataObjArr,
@@ -127,16 +129,16 @@ function getPhysicalInterfaceDetails(error, pRouters, response, appData){
     var pInterfacesLength = 0;
     var result = [];
     var dataObjArr        = [];
-    
+
     for(var k = 0; k < pRouters.length; k++){
         var prouter = pRouters[k];
         if(prouter['physical-router'] != null && prouter['physical-router']['physical_interfaces'] != null && prouter['physical-router']['physical_interfaces'].length > 0){
             pInterfacesLength = prouter['physical-router']['physical_interfaces'].length;
             for(i = 0; i < pInterfacesLength; i++) {
-                var pInterface = prouter['physical-router']['physical_interfaces'][i];   
+                var pInterface = prouter['physical-router']['physical_interfaces'][i];
                 reqUrl = '/physical-interface/' + pInterface['uuid'];
                 commonUtils.createReqObj(dataObjArr, reqUrl, global.HTTP_REQUEST_GET,
-                                        null, null, null, appData);        
+                                        null, null, null, appData);
             }
         }
     }
@@ -149,7 +151,7 @@ function getPhysicalInterfaceDetails(error, pRouters, response, appData){
                    return;
                 }
                 if(pInterfaces.length > 0){
-                    
+
                     for(var j=0 ;j < pRouters.length; j++){
                         pRouters[j]['physical-router']['physical_interfaces'] = [];
                         for(var l=0 ; l < pInterfaces.length; l++){
@@ -186,10 +188,10 @@ function getVirtualRouterDetails(error, pRouters, response, appData){
         if(prouter['physical-router'] != null && prouter['physical-router']['virtual_router_refs'] != null && prouter['physical-router']['virtual_router_refs'].length > 0){
             vroutersLength = prouter['physical-router']['virtual_router_refs'].length;
             for(i = 0; i < vroutersLength; i++) {
-                var vrouter = prouter['physical-router']['virtual_router_refs'][i];   
+                var vrouter = prouter['physical-router']['virtual_router_refs'][i];
                 reqUrl = '/virtual-router/' + vrouter['uuid'];
                 commonUtils.createReqObj(dataObjArr, reqUrl, global.HTTP_REQUEST_GET,
-                                        null, null, null, appData);        
+                                        null, null, null, appData);
             }
         }
     }
@@ -202,7 +204,7 @@ function getVirtualRouterDetails(error, pRouters, response, appData){
                    return;
                 }
                 if(vrouters.length > 0){
-                    
+
                     for(var j=0 ;j < pRouters.length; j++){
                         pRouters[j]['physical-router']['virtual-routers'] = [];
                         for(var l=0 ; l < vrouters.length; l++){
@@ -232,10 +234,11 @@ function getPhysicalRoutersWithIntfCount (request, response, appData)
              if ((null != error) || (null == data) || (null ==
                  data['physical-routers'])) {
                  commonUtils.handleJSONResponse(error, response, null);
+                 return;
              }
              getPhysicalInterfacesLogicalInterfaceCount(error,
                  data['physical-routers'], response, appData);
-         });             
+         });
 }
 
 function getPostDataForLogicalIntfCount(parentUUIDs){
@@ -266,7 +269,7 @@ function getPhysicalInterfacesLogicalInterfaceCount(error, pRouters, response, a
     var result = [];
     var dataObjArr        = [];
     var dataObjPostArr     = [];
-    
+    var virtualRouterUUIDs = [];
     var prouterMap = [];//Keep the map of prouter uuid and array of arrays of pinterfaces
     var pRoutersCnt = pRouters.length;
     var totalCnt = 0;
@@ -286,39 +289,110 @@ function getPhysicalInterfacesLogicalInterfaceCount(error, pRouters, response, a
         } else {
             prouterMap[k] = [-1, -1];
         }
+        //get virtual router uuids
+        var virtualRouterRefs = prouter['physical-router'].virtual_router_refs;
+        if(virtualRouterRefs != null && virtualRouterRefs.length > 0) {
+            var virtualRouterRefsCnt = virtualRouterRefs.length
+            for(var i = 0; i < virtualRouterRefsCnt; i++) {
+                virtualRouterUUIDs.push(virtualRouterRefs[i].uuid)
+            }
+        }
     }
-    if(dataObjArr.length > 0) {
-        async.mapLimit(dataObjPostArr, 50,
-            commonUtils.getAPIServerResponse(configApiServer.apiPost, true),
-            function(error, results) {
+    if(virtualRouterUUIDs.length > 0) {
+        configApiServer.apiGet('/virtual-routers?detail=true&obj_uuids='+ virtualRouterUUIDs.join(','), appData,
+                function(error, virtualRouterdata) {
+                    if(error){
+                        commonUtils.handleJSONResponse(error, response, null);
+                        return;
+                    }
+                    //map virtual router details to physical router
+                    var virtualRouters = virtualRouterdata['virtual-routers'];
+                    if(virtualRouters != null && virtualRouters.length > 0) {
+                        for(var i = 0; i < pRoutersCnt; i++){
+                            var prouter = pRouters[i];
+                            var virtualRouterRefs = prouter['physical-router'].virtual_router_refs;
+                            if(virtualRouterRefs != null && virtualRouterRefs.length > 0) {
+                                var virtualRouterRefsCnt = virtualRouterRefs.length;
+                                for(var j = 0; j < virtualRouterRefsCnt; j++) {
+                                    var uuid = virtualRouterRefs[j].uuid;
+                                    var virtualRouterdataCnt = virtualRouters.length;
+                                    for(var k = 0; k < virtualRouterdataCnt; k++) {
+                                        var virtualRouter = virtualRouters[k]['virtual-router'];
+                                        if(virtualRouter.uuid === uuid) {
+                                           virtualRouterRefs[j] = virtualRouter;
+                                           break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if(dataObjArr.length > 0) {
+                        getLogicalInterfaceDetails(dataObjPostArr, pRouters, prouterMap,
+                        function(error, pRoutersData) {
+                            if (error) {
+                               commonUtils.handleJSONResponse(error, response, null);
+                               return;
+                            }
+                            commonUtils.handleJSONResponse(error, response, pRoutersData);
+                        });
+                    } else {
+                        commonUtils.handleJSONResponse(error, response, pRouters);
+                    }
+
+        });
+    } else {
+        if(dataObjArr.length > 0) {
+            getLogicalInterfaceDetails(dataObjPostArr, pRouters, prouterMap, function(error, pRoutersData) {
                 if (error) {
                    commonUtils.handleJSONResponse(error, response, null);
                    return;
                 }
-                for (var i = 0; i < pRoutersCnt; i++) {
-                    pRouters[i]['physical-router']['totalIntfCount'] = 0;
-                    if(pRouters[i]['physical-router']['physical_interfaces'] != null)
-                        pRouters[i]['physical-router']['totalIntfCount']  += pRouters[i]['physical-router']['physical_interfaces'].length;
-                    if(pRouters[i]['physical-router']['logical_interfaces'] != null)
-                        pRouters[i]['physical-router']['totalIntfCount']  += pRouters[i]['physical-router']['logical_interfaces'].length;
-                    var prStartIndex = prouterMap[i][0];
-                    var prEndIndex = prouterMap[i][1];
-                    if(-1 == prStartIndex){
-                        continue;
-                    }
-                    for (var j = prStartIndex; j <= prEndIndex; j++) {
-                        pRouters[i]['physical-router']['totalIntfCount'] +=
-                                    results[j]['logical-interfaces']['count'];
-                    }
-                    delete pRouters[i]['physical-router']['physical_interfaces'];
-                    delete pRouters[i]['physical-router']['logical_interfaces'];
-                }
-                commonUtils.handleJSONResponse(error, response, pRouters);
-            }
-        );
-    } else {
-        commonUtils.handleJSONResponse(error, response, pRouters);
+                commonUtils.handleJSONResponse(error, response, pRoutersData);
+            });
+        } else {
+            commonUtils.handleJSONResponse(error, response, pRouters);
+        }
     }
+}
+
+/**
+ * @getLogicalInterfaceDetails
+ * private function
+ * get logical interafce details
+ */
+function getLogicalInterfaceDetails(dataObjPostArr, pRouters, prouterMap, callback)
+{
+    async.mapLimit(dataObjPostArr, 50,
+        commonUtils.getAPIServerResponse(configApiServer.apiPost, true),
+        function(error, results) {
+            if (error) {
+               callback(error, null);
+            }
+            var pRoutersCnt = pRouters.length;
+            for (var i = 0; i < pRoutersCnt; i++) {
+                pRouters[i]['physical-router']['totalIntfCount'] = 0;
+                if(pRouters[i]['physical-router']['physical_interfaces'] != null)
+                    pRouters[i]['physical-router']['totalIntfCount']  +=
+                        pRouters[i]['physical-router']['physical_interfaces'].length;
+                if(pRouters[i]['physical-router']['logical_interfaces'] != null)
+                    pRouters[i]['physical-router']['totalIntfCount']  +=
+                        pRouters[i]['physical-router']['logical_interfaces'].length;
+                var prStartIndex = prouterMap[i][0];
+                var prEndIndex = prouterMap[i][1];
+                if(-1 == prStartIndex){
+                    continue;
+                }
+                for (var j = prStartIndex; j <= prEndIndex; j++) {
+                    pRouters[i]['physical-router']['totalIntfCount'] +=
+                                results[j]['logical-interfaces']['count'];
+                }
+                delete pRouters[i]['physical-router']['physical_interfaces'];
+                delete pRouters[i]['physical-router']['logical_interfaces'];
+            }
+            callback(error, pRouters);
+        }
+    );
 }
 
 /**
@@ -328,7 +402,7 @@ function getPhysicalInterfacesLogicalInterfaceCount(error, pRouters, response, a
  * 2. Reads the response of Fip get from config api server
  *    and sends it back to the client.
  */
-function setPRouterRead(error, fipConfig, response, appData) 
+function setPRouterRead(error, fipConfig, response, appData)
 {
     var fipGetURL = '/floating-ip/';
 
@@ -352,7 +426,7 @@ function setPRouterRead(error, fipConfig, response, appData)
  */
 function getPhysicalRouter (request, response, appData)
 {
-    var pRouterID = validatePhysicalRouterId(request); 
+    var pRouterID = validatePhysicalRouterId(request);
     var postData     =  request.body;
     configApiServer.apiGet('/physical-router/' + pRouterID, appData,
             function(error, data) {
@@ -361,7 +435,48 @@ function getPhysicalRouter (request, response, appData)
                     return;
                 }
                 commonUtils.handleJSONResponse(error, response, data);
-    });              
+    });
+}
+
+function updateBGPRouter(appData, postData, callback)
+{
+    var physicalRouterUUID, refUpdateData;
+    var bgpRef = commonUtils.getValueByJsonPath(postData,
+        "physical-router;bgp_router_refs;0", null);
+    var bgpUUID = commonUtils.getValueByJsonPath(bgpRef,
+        "uuid", null);
+    var bgpRefObj = commonUtils.getValueByJsonPath(bgpRef,
+        "to", null);
+    if(bgpUUID) {
+        configApiServer.apiGet('/bgp-router/' + bgpUUID, appData,
+                function(error, bgpData) {
+                    if(error || !bgpData["bgp-router"]){
+                        callback(error, null);
+                        return;
+                    }
+                    physicalRouterUUID = commonUtils.getValueByJsonPath(bgpData,
+                        "bgp-router;physical_router_back_refs;0;uuid", null);
+                    if(physicalRouterUUID) {
+                        refUpdateData = {
+                            "type": "physical-router",
+                            "uuid": physicalRouterUUID,
+                            "ref-type": "bgp-router",
+                            "ref-uuid": bgpUUID,
+                            "ref-fq-name": bgpRefObj,
+                            "operation": "DELETE",
+                            "attr": null
+                        };
+                        configApiServer.apiPost("/ref-update", refUpdateData,
+                            appData, function(er, prData){
+                            callback(er, prData);
+                        });
+                    } else {
+                        callback(null, postData);
+                    }
+        });
+    } else {
+        callback(null, postData);
+    }
 }
 
 /**
@@ -405,18 +520,8 @@ function createPhysicalRouters (request, response, appData)
                                                        commonUtils.handleJSONResponse(error, response, null);
                                                        return;
                                                    } else {
-                                                       delete postData['physical-router']['virtual-routers'];
-                                                       delete postData['physical-router']['virtual_router_type'];
                                                        //create physical router
-                                                       configApiServer.apiPost('/physical-routers', postData, appData,
-                                                               function(error, data) {
-                                                                   if(error){
-                                                                       commonUtils.handleJSONResponse(error, response, null);
-                                                                       return;
-                                                                   }
-                                                                   getPhysicalRoutersWithIntfCount(request, response, appData);
-                                                               });
-                                                   
+                                                       createPRouter(request, response, postData, appData);
                                                    }
                                                 });
                                     }
@@ -429,34 +534,16 @@ function createPhysicalRouters (request, response, appData)
                                     commonUtils.handleJSONResponse(error, response, null);
                                     return;
                                 } else {
-                                    delete postData['physical-router']['virtual-routers'];
-                                    delete postData['physical-router']['virtual_router_type'];
                                     //create physical router
-                                    configApiServer.apiPost('/physical-routers', postData, appData,
-                                            function(error, data) {
-                                                if(error){
-                                                    commonUtils.handleJSONResponse(error, response, null);
-                                                    return;
-                                                }
-                                                getPhysicalRoutersWithIntfCount(request, response, appData);
-                                            });
+                                    createPRouter(request, response, postData, appData);
                                 }
                              });
                  }
              } else {
-                 delete postData['physical-router']['virtual-routers'];
-                 delete postData['physical-router']['virtual_router_type'];
                  //create physical router
-                 configApiServer.apiPost('/physical-routers', postData, appData,
-                         function(error, data) {
-                             if(error){
-                                 commonUtils.handleJSONResponse(error, response, null);
-                                 return;
-                             }
-                             getPhysicalRoutersWithIntfCount(request, response, appData);
-                         });
+                 createPRouter(request, response, postData, appData);
              }
-         } 
+         }
          //If Tor Agent
          //Try to create the TOR Agent and TSN. Even if they fail go ahead and create physical router
          else if(postData['physical-router']['virtual_router_type'] == 'TOR Agent'){
@@ -467,7 +554,7 @@ function createPhysicalRouters (request, response, appData)
                  for(i = 0; i < vrouterPostData.length; i++) {
                      reqUrl = '/virtual-routers';
                      commonUtils.createReqObj(dataObjArr, reqUrl, global.HTTP_REQUEST_POST,
-                             vrouterPostData[i], null, null, appData);        
+                             vrouterPostData[i], null, null, appData);
                  }
                  async.map(dataObjArr,
                      commonUtils.getAPIServerResponse(configApiServer.apiPost, false),
@@ -476,44 +563,41 @@ function createPhysicalRouters (request, response, appData)
                             commonUtils.handleJSONResponse(error, response, null);
                             return;
                          }
-                         delete postData['virtual-routers'];
-                         delete postData['virtual_router_type'];
                          //create physical router
-                         configApiServer.apiPost('/physical-routers', postData, appData,
-                                 function(error, data) {
-                                     if(error){
-                                         commonUtils.handleJSONResponse(error, response, null);
-                                         return;
-                                     }
-                                     getPhysicalRoutersWithIntfCount(request, response, appData);
-                                 });
+                         createPRouter(request, response, postData, appData);
                      }
                  );
              } else {
-                 delete postData['virtual-routers'];
-                 delete postData['virtual_router_type'];
                  //create physical router
-                 configApiServer.apiPost('/physical-routers', postData, appData,
-                         function(error, data) {
-                             if(error){
-                                 commonUtils.handleJSONResponse(error, response, null);
-                                 return;
-                             }
-                             getPhysicalRoutersWithIntfCount(request, response, appData);
-                         });
+                 createPRouter(request, response, postData, appData);
              }
-         }  
+         }
      } else {
          //create physical router
-         configApiServer.apiPost('/physical-routers', postData, appData,
-                 function(error, data) {
-                     if(error){
-                         commonUtils.handleJSONResponse(error, response, null);
-                         return;
-                     }
-                     getPhysicalRoutersWithIntfCount(request, response, appData);
-                 });
-     } 
+         createPRouter(request, response, postData, appData);
+     }
+}
+
+
+function createPRouter(request, response, postData, appData) {
+
+    delete postData['physical-router']['virtual-routers'];
+    delete postData['physical-router']['virtual_router_type'];
+    updateBGPRouter(appData, postData, function(err, prData) {
+        if(err) {
+           commonUtils.handleJSONResponse(err, response, null);
+           return;
+        }
+        //create physical router
+        configApiServer.apiPost('/physical-routers', postData, appData,
+                function(error, data) {
+                    if(error){
+                        commonUtils.handleJSONResponse(error, response, null);
+                        return;
+                    }
+                    getPhysicalRoutersWithIntfCount(request, response, appData);
+                });
+    });
 }
 
 /**
@@ -524,7 +608,7 @@ function createPhysicalRouters (request, response, appData)
  */
 function updatePhysicalRouters (request, response, appData)
 {
-    /* var pRouterId = validatePhysicalRouterId(request); 
+    /* var pRouterId = validatePhysicalRouterId(request);
      var postData     =  request.body;
      configApiServer.apiPut('/physical-router/' + pRouterId, postData, appData,
          function(error, data) {
@@ -533,7 +617,7 @@ function updatePhysicalRouters (request, response, appData)
                  return;
              }
             getPhysicalRouters(request, response, appData);
-         }); 
+         });
          */
     var pRouterId = validatePhysicalRouterId(request);
     var postData     =  request.body;
@@ -589,7 +673,7 @@ function updatePhysicalRouters (request, response, appData)
             } else {
                 updatePRouter(request, response, pRouterId, postData, appData);
             }
-        } 
+        }
         //If Tor Agent
         //Try to create the TOR Agent and TSN. Even if they fail go ahead and update physical router
         else if(postData['physical-router']['virtual_router_type'] == 'TOR Agent'){
@@ -600,7 +684,7 @@ function updatePhysicalRouters (request, response, appData)
                 for(i = 0; i < vrouterPostData.length; i++) {
                     reqUrl = '/virtual-routers';
                     commonUtils.createReqObj(dataObjArr, reqUrl, global.HTTP_REQUEST_POST,
-                            vrouterPostData[i], null, null, appData);        
+                            vrouterPostData[i], null, null, appData);
                 }
                 async.map(dataObjArr,
                     commonUtils.getAPIServerResponse(configApiServer.apiPost, false),
@@ -615,13 +699,13 @@ function updatePhysicalRouters (request, response, appData)
             } else {
                 updatePRouter(request, response, pRouterId, postData, appData);
             }
-        }  
+        }
     } else {
         //update physical router
         updatePRouter(request, response, pRouterId, postData, appData)
-    } 
+    }
 
-} 
+}
 
 /**
  * Common function to update the pRouter removing the unneccesary fields.
@@ -636,14 +720,27 @@ function updatePRouter(request, response, pRouterId, postData, appData){
     delete postData['virtual_router_type'];
     delete postData['physical-router']['isVirtualRouterEdit'];
     //update physical router
-    configApiServer.apiPut('/physical-router/' + pRouterId, postData, appData,
-            function(error, data) {
-                if(error){
-                    commonUtils.handleJSONResponse(error, response, null);
-                    return;
-                }
-                commonUtils.handleJSONResponse(error, response, data);
-            });
+    updateBGPRouter(appData, postData, function(err, prData) {
+        var prUrl = '/physical-router/' + pRouterId;
+        if(err) {
+            commonUtils.handleJSONResponse(err, response, null);
+            return;
+        }
+        jsonDiff.getJSONDiffByConfigUrl(prUrl, appData, postData,
+            function(err, prDataDelta){
+                configApiServer.apiPut(prUrl, prDataDelta, appData,
+                    function(error, data) {
+                        if(error){
+                            commonUtils.handleJSONResponse(error,
+                                response, null);
+                            return;
+                        }
+                        commonUtils.handleJSONResponse(error, response, data);
+                    }
+                );
+            }
+        );
+    });
 }
 
 /**
@@ -654,7 +751,7 @@ function updatePRouter(request, response, pRouterId, postData, appData){
  */
 function deletePhysicalRouters (request, response, appData)
 {
-     var pRouterID = validatePhysicalRouterId(request); 
+     var pRouterID = validatePhysicalRouterId(request);
      var postData     =  request.body;
      configApiServer.apiDelete('/physical-router/' + pRouterID, appData,
          function(error, data) {
@@ -663,11 +760,11 @@ function deletePhysicalRouters (request, response, appData)
                  return;
              }
              getPhysicalRoutersWithIntfCount(request, response, appData);
-         });             
-} 
+         });
+}
 
 
-function validatePhysicalRouterId (request) 
+function validatePhysicalRouterId (request)
 {
     var pRouterId = null;
     if (!(pRouterId = request.param('id').toString())) {
@@ -679,9 +776,9 @@ function validatePhysicalRouterId (request)
 }
 
  /* List all public function here */
- 
+
  exports.getPhysicalRoutersList= getPhysicalRoutersList;
- exports.getPhysicalRouters    = getPhysicalRouters; 
+ exports.getPhysicalRouters    = getPhysicalRouters;
  exports.getPhysicalRoutersWithIntfCount = getPhysicalRoutersWithIntfCount;
  exports.getPhysicalRouter    = getPhysicalRouter;
  exports.createPhysicalRouters = createPhysicalRouters;

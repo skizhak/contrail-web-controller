@@ -64,6 +64,11 @@
         <write-access>member</write-access>
     </item>
     <item>
+        <feature>routingpolicyconfig</feature>
+        <read-access>member</read-access>
+        <write-access>member</write-access>
+    </item>
+    <item>
         <feature>fipconfig</feature>
         <read-access>member</read-access>
         <write-access>member</write-access>
@@ -89,7 +94,12 @@
         <write-access>member</write-access>
     </item>
     <item>
-        <feature>virtualdnsconfig</feature>
+        <feature>virtualdnsserversconfig</feature>
+        <read-access>member</read-access>
+        <write-access>member</write-access>
+    </item>
+    <item>
+        <feature>virtualdnsrecordsconfig</feature>
         <read-access>member</read-access>
         <write-access>member</write-access>
     </item>
@@ -129,14 +139,24 @@
         <write-access>member</write-access>
     </item>
     <item>
-        <feature>alarms</feature>
-        <read-access>member</read-access>
-        <write-access>member</write-access>
-    </item>
-    <item>
         <feature>portconfig</feature>
     </item>
     <item>
         <feature>configUtil</feature>
+    </item>
+    <item>
+        <feature>svcAppliance</feature>
+    </item>
+    <item>
+        <feature>svcApplianceSet</feature>
+    </item>
+    <item>
+        <feature>rtTableConfig</feature>
+    </item>
+    <item>
+        <feature>bgpasaserviceconfig</feature>
+    </item>
+    <item>
+        <feature>routeaggregateconfig</feature>
     </item>
 </featureLists>

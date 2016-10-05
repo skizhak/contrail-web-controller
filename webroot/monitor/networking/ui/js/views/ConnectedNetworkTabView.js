@@ -4,17 +4,17 @@
 
 define([
     'underscore',
-    'backbone',
+    'contrail-view',
     'contrail-view-model'
-], function (_, Backbone, ContrailViewModel) {
-    var ConnectedNetworkTabView = Backbone.View.extend({
+], function (_, ContrailView, ContrailViewModel) {
+    var ConnectedNetworkTabView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
 
             var self = this, viewConfig = this.attributes.viewConfig;
 
-            cowu.renderView4Config(self.$el, null, getConnectedNetworkTabViewConfig(viewConfig), null, null, null);
+            self.renderView4Config(self.$el, null, getConnectedNetworkTabViewConfig(viewConfig), null, null, null);
         }
     });
 
@@ -22,53 +22,42 @@ define([
         var linkDetails = viewConfig.linkDetails;
 
         return {
-            elementId: cowu.formatElementId([ctwl.MONITOR_INSTANCE_VIEW_ID, '-section']),
-            view: "SectionView",
+            elementId: ctwl.CONNECTED_NETWORK_TABS_ID,
+            view: "TabsView",
             viewConfig: {
-                rows: [
+                theme: 'classic',
+                active: 1,
+                activate: function (e, ui) {
+                    var selTab = $(ui.newTab.context).text();
+                    if (selTab == ctwl.TITLE_TRAFFIC_STATISTICS) {
+                        $('#' + ctwl.CONNECTED_NETWORK_TRAFFIC_STATS_ID).find('svg').trigger('refresh');
+                    }
+                },
+                tabs: [
                     {
-                        columns: [
-                            {
-                                elementId: ctwl.CONNECTED_NETWORK_TABS_ID,
-                                view: "TabsView",
-                                viewConfig: {
-                                    theme: 'classic',
-                                    activate: function (e, ui) {
-                                        var selTab = $(ui.newTab.context).text();
-                                        if (selTab == ctwl.TITLE_TRAFFIC_STATISTICS) {
-                                            $('#' + ctwl.CONNECTED_NETWORK_TRAFFIC_STATS_ID).find('svg').trigger('refresh');
-                                        }
-                                    },
-                                    tabs: [
-                                        {
-                                            elementId: ctwl.CONNECTED_NETWORK_DETAILS_ID,
-                                            title: ctwl.TITLE_DETAILS,
-                                            view: "DetailsView",
-                                            viewConfig: {
-                                                data: linkDetails,
-                                                templateConfig: getConnectedNetworkDetailsTemplateConfig(),
-                                                app: cowc.APP_CONTRAIL_CONTROLLER,
-
-                                            }
-                                        },
-                                        {
-                                            elementId: ctwl.CONNECTED_NETWORK_TRAFFIC_STATS_ID,
-                                            title: ctwl.TITLE_TRAFFIC_STATISTICS,
-                                            app: cowc.APP_CONTRAIL_CONTROLLER,
-                                            view: "ConnectedNetworkTrafficStatsView",
-                                            viewConfig: {
-                                                linkDetails: linkDetails,
-                                                parseFn: ctwp.parseLineChartData
-                                            }
-                                        }
-                                    ]
-                                }
-                            }
-                        ]
+                        elementId: ctwl.CONNECTED_NETWORK_DETAILS_ID,
+                        title: ctwl.TITLE_DETAILS,
+                        view: "DetailsView",
+                        viewConfig: {
+                            data: linkDetails,
+                            templateConfig: getConnectedNetworkDetailsTemplateConfig(),
+                            app: cowc.APP_CONTRAIL_CONTROLLER
+                        }
+                    },
+                    {
+                        elementId: ctwl.CONNECTED_NETWORK_TRAFFIC_STATS_ID,
+                        title: ctwl.TITLE_TRAFFIC_STATISTICS,
+                        app: cowc.APP_CONTRAIL_CONTROLLER,
+                        view: "ConnectedNetworkTrafficStatsView",
+                        viewPathPrefix: "monitor/networking/ui/js/views/",
+                        viewConfig: {
+                            linkDetails: linkDetails,
+                            parseFn: ctwp.parseTrafficLineChartData
+                        }
                     }
                 ]
             }
-        }
+        };
     };
 
     var getConnectedNetworkDetailsTemplateConfig = function () {
@@ -81,7 +70,7 @@ define([
                         templateGeneratorConfig: {
                             columns: [
                                 {
-                                    class: 'span6',
+                                    class: 'col-xs-6',
                                     rows: [
                                         {
                                             title: ctwl.TITLE_CONNECTED_NETWORK_DETAILS,
@@ -121,7 +110,7 @@ define([
                         templateGeneratorConfig: {
                             columns: [
                                 {
-                                    class: 'span12',
+                                    class: 'col-xs-12',
                                     rows: [
                                         {
                                             templateGenerator: 'BlockGridTemplateGenerator',
@@ -153,7 +142,10 @@ define([
                                                     },
                                                     {
                                                         key: 'pkts',
-                                                        templateGenerator: 'TextGenerator'
+                                                        templateGenerator: 'TextGenerator',
+                                                        templateGeneratorConfig: {
+                                                            formatter: 'packet'
+                                                        }
                                                     },
                                                     {
                                                         key: 'bytes',
@@ -175,7 +167,7 @@ define([
                         templateGeneratorConfig: {
                             columns: [
                                 {
-                                    class: 'span12',
+                                    class: 'col-xs-12',
                                     rows: [
                                         {
                                             templateGenerator: 'BlockGridTemplateGenerator',
@@ -207,7 +199,10 @@ define([
                                                     },
                                                     {
                                                         key: 'pkts',
-                                                        templateGenerator: 'TextGenerator'
+                                                        templateGenerator: 'TextGenerator',
+                                                        templateGeneratorConfig: {
+                                                            formatter: 'packet'
+                                                        }
                                                     },
                                                     {
                                                         key: 'bytes',

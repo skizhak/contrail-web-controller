@@ -4,18 +4,17 @@
 
 define([
     'underscore',
-    'backbone'
-], function (_, Backbone) {
-    var ProjectTabView = Backbone.View.extend({
+    'contrail-view'
+], function (_, ContrailView) {
+    var ProjectTabView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
             var self = this,
                 viewConfig = this.attributes.viewConfig;
 
-            cowu.renderView4Config(self.$el, null, getProjectViewConfig(viewConfig));
+            this.renderView4Config(self.$el, null, getProjectViewConfig(viewConfig));
         }
-
     });
 
     var getProjectViewConfig = function (viewConfig) {
@@ -23,145 +22,100 @@ define([
             projectUUID = viewConfig['projectUUID'];
 
         return {
-            elementId: cowu.formatElementId([ctwl.MONITOR_PROJECT_VIEW_ID, '-section']),
-            view: "SectionView",
+            elementId: ctwl.PROJECT_TABS_ID,
+            view: "TabsView",
             viewConfig: {
-                rows: [
+                theme: 'classic',
+                tabs: [
                     {
-                        columns: [
-                            {
-                                elementId: ctwl.PROJECT_TABS_ID,
-                                view: "TabsView",
-                                viewConfig: {
-                                    theme: 'classic',
-                                    activate: function (e, ui) {
-                                        var selTab = $(ui.newTab.context).text();
-                                        if (selTab == ctwl.TITLE_PORT_DISTRIBUTION) {
-                                            $('#' + ctwl.PROJECT_PORTS_SCATTER_CHART_ID).find('svg').trigger('refresh');
-                                        } else if (selTab == ctwl.TITLE_NETWORKS) {
-                                            $('#' + ctwl.PROJECT_NETWORK_GRID_ID).data('contrailGrid').refreshView();
-                                        } else if (selTab == ctwl.TITLE_INSTANCES) {
-                                            $('#' + ctwl.PROJECT_INSTANCE_GRID_ID).data('contrailGrid').refreshView();
-                                        }
-                                    },
-                                    tabs: [
-                                        {
-                                            elementId: ctwl.PROJECT_NETWORKS_ID,
-                                            title: ctwl.TITLE_NETWORKS,
-                                            view: "NetworkGridView",
-                                            app: cowc.APP_CONTRAIL_CONTROLLER,
-                                            viewConfig: {
-                                                projectFQN: projectFQN,
-                                                parentType: 'project'
-                                            }
-                                        },
-                                        {
-                                            elementId: ctwl.PROJECT_INSTANCES_ID,
-                                            title: ctwl.TITLE_INSTANCES,
-                                            view: "InstanceGridView",
-                                            app: cowc.APP_CONTRAIL_CONTROLLER,
-                                            viewConfig: {
-                                                parentUUID: projectUUID,
-                                                parentType: 'project'
-                                            }
-                                        },
-                                        {
-                                            elementId: ctwl.PROJECT_PORTS_SCATTER_CHART_ID,
-                                            title: ctwl.TITLE_PORT_DISTRIBUTION,
-                                            view: "ScatterChartView",
-                                            viewConfig: {
-                                                class: "port-distribution-chart",
-                                                modelConfig: {
-                                                    remote: {
-                                                        ajaxConfig: {
-                                                            url: ctwc.get(ctwc.URL_PORT_DISTRIBUTION, projectFQN),
-                                                            type: 'GET'
-                                                        },
-                                                        dataParser: ctwp.projectVNPortStatsParser
-                                                    },
-                                                    cacheConfig: {
-                                                        ucid: ctwc.get(ctwc.UCID_PROJECT_VN_PORT_STATS_LIST, projectFQN)
-                                                    }
-                                                },
-                                                parseFn: function (responseArray) {
-                                                    var response = responseArray[0];
-                                                    var retObj = {
-                                                        d: [{
-                                                            key: 'Source Port',
-                                                            values: response ? ctwp.parsePortDistribution(ifNull(response['sport'], []), {
-                                                                startTime: response['startTime'],
-                                                                endTime: response['endTime'],
-                                                                bandwidthField: 'outBytes',
-                                                                flowCntField: 'outFlowCount',
-                                                                portField: 'sport'
-                                                            }) : []
-                                                        },
-                                                            {
-                                                                key: 'Destination Port',
-                                                                values: response ? ctwp.parsePortDistribution(ifNull(response['dport'], []), {
-                                                                    startTime: response['startTime'],
-                                                                    endTime: response['endTime'],
-                                                                    bandwidthField: 'inBytes',
-                                                                    flowCntField: 'inFlowCount',
-                                                                    portField: 'dport'
-                                                                }) : []
-                                                            }],
-                                                        forceX: [0, 1000],
-                                                        xLblFormat: d3.format(''),
-                                                        yDataType: 'bytes',
-                                                        fqName: projectFQN,
-                                                        yLbl: ctwl.Y_AXIS_TITLE_BW,
-                                                        link: {
-                                                            hashParams: {
-                                                                q: {
-                                                                    view: 'list',
-                                                                    type: 'project',
-                                                                    fqName: projectFQN,
-                                                                    context: 'domain'
-                                                                }
-                                                            }
-                                                        },
-                                                        chartOptions: {
-                                                            clickFn: onScatterChartClick,
-                                                            tooltipFn: ctwgrc.getPortDistributionTooltipConfig(onScatterChartClick)
-                                                        },
-                                                        title: ctwl.TITLE_PORT_DISTRIBUTION,
-                                                        xLbl: ctwl.X_AXIS_TITLE_PORT
-                                                    };
-                                                    return retObj;
-                                                }
-                                            }
-                                        }
-                                    ]
+                        elementId: ctwl.PROJECT_NETWORKS_ID,
+                        title: ctwl.TITLE_NETWORKS,
+                        view: "NetworkGridView",
+                        viewPathPrefix: "monitor/networking/ui/js/views/",
+                        app: cowc.APP_CONTRAIL_CONTROLLER,
+                        tabConfig: {
+                            activate: function(event, ui) {
+                                if ($('#' + ctwl.PROJECT_NETWORK_GRID_ID).data('contrailGrid')) {
+                                    $('#' + ctwl.PROJECT_NETWORK_GRID_ID).data('contrailGrid').refreshView();
                                 }
                             }
-                        ]
+                        },
+                        viewConfig: {
+                            projectFQN: projectFQN,
+                            parentType: 'project'
+                        }
+                    },
+                    {
+                        elementId: ctwl.PROJECT_INSTANCES_ID,
+                        title: ctwl.TITLE_INSTANCES,
+                        view: "InstanceGridView",
+                        viewPathPrefix: "monitor/networking/ui/js/views/",
+                        app: cowc.APP_CONTRAIL_CONTROLLER,
+                        tabConfig: {
+                            activate: function(event, ui) {
+                                if ($('#' + ctwl.PROJECT_INSTANCE_GRID_ID).data('contrailGrid')) {
+                                    $('#' + ctwl.PROJECT_INSTANCE_GRID_ID).data('contrailGrid').refreshView();
+                                }
+                            },
+                            renderOnActivate: true
+                        },
+                        viewConfig: {
+                            parentUUID: projectUUID,
+                            parentType: ctwc.TYPE_PROJECT
+                        }
+                    },
+                    {
+                        elementId: ctwl.PROJECT_INTERFACES_ID,
+                        title: ctwl.TITLE_INTERFACES,
+                        view: "InterfaceGridView",
+                        viewPathPrefix: "monitor/networking/ui/js/views/",
+                        app: cowc.APP_CONTRAIL_CONTROLLER,
+                        tabConfig: {
+                            activate: function(event, ui) {
+                                if ($('#' + ctwl.PROJECT_INTERFACE_GRID_ID).data('contrailGrid')) {
+                                    $('#' + ctwl.PROJECT_INTERFACE_GRID_ID).data('contrailGrid').refreshView();
+                                }
+                            },
+                            renderOnActivate: true
+                        },
+                        viewConfig: {
+                            parentType: ctwc.TYPE_PROJECT,
+                            projectFQN: projectFQN,
+                            elementId: ctwl.PROJECT_INTERFACE_GRID_ID
+                        }
+                    },
+                    {
+                        elementId: ctwl.PROJECT_PORTS_SCATTER_CHART_ID,
+                        title: ctwl.TITLE_PORT_DISTRIBUTION,
+                        view: "ZoomScatterChartView",
+                        tabConfig: {
+                            activate: function(event, ui) {
+                                $('#' + ctwl.PROJECT_PORTS_SCATTER_CHART_ID).trigger('refresh');
+                            },
+                            renderOnActivate: true
+                        },
+                        viewConfig: {
+                            modelConfig: {
+                                remote: {
+                                    ajaxConfig: {
+                                        url: ctwc.get(ctwc.URL_NETWORK_PORT_DISTRIBUTION, projectFQN),
+                                        type: 'GET'
+                                    },
+                                    dataParser: function (response) {
+                                        return nmwp.parseProject4PortDistribution(response, projectFQN);
+                                    }
+                                },
+                                cacheConfig: {
+                                    ucid: ctwc.get(ctwc.UCID_PROJECT_VN_PORT_STATS_LIST, projectFQN)
+                                }
+                            },
+                            chartOptions: ctwvc.getPortDistChartOptions()
+                        }
                     }
                 ]
             }
-        }
-    };
-
-    var onScatterChartClick = function(chartConfig) {
-        var obj= {
-            type: 'flow',
-            view: 'list',
-            fqName:chartConfig['fqName'],
-            port:chartConfig['range']
         };
-        if(chartConfig['startTime'] != null && chartConfig['endTime'] != null) {
-            obj['startTime'] = chartConfig['startTime'];
-            obj['endTime'] = chartConfig['endTime'];
-        }
-
-        if(chartConfig['type'] == 'sport')
-            obj['portType']='src';
-        else if(chartConfig['type'] == 'dport')
-            obj['portType']='dst';
-
-        layoutHandler.setURLHashParams(obj, {p:"mon_networking_projects", merge:false});
     };
-
 
     return ProjectTabView;
 });

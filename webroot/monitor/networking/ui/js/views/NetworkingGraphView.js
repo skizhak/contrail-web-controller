@@ -4,102 +4,78 @@
 
 define([
     'underscore',
-    'backbone',
+    'contrail-view',
     'contrail-graph-model',
-    'joint',
-    'graph-view'
-], function (_, Backbone, ContrailGraphModel, Joint, GraphView) {
-    var NetworkingGraphView = Backbone.View.extend({
+    'graph-view',
+    'contrail-element',
+    'core-basedir/js/common/graph.utils'
+], function (_, ContrailView, ContrailGraphModel, GraphView, ContrailElement, grUtils) {
+
+    var NetworkingGraphView = ContrailView.extend({
         render: function () {
-            var graphTemplate = contrail.getTemplate4Id(cowc.TMPL_NETWORKING_GRAPH_VIEW),
-                viewConfig = this.attributes.viewConfig,
+            var self = this,
+                graphTemplate = contrail.getTemplate4Id(cowc.TMPL_NETWORKING_GRAPH_VIEW),
+                viewConfig = self.attributes.viewConfig,
                 connectedGraph = viewConfig['connectedGraph'],
                 configGraph = viewConfig['configGraph'],
-                selectorId = '#networking-graph',
-                connectedSelectorId = '#graph-connected-elements',
-                configSelectorId = '#graph-config-elements';
+                selectorId = '#' + ctwl.NETWORKING_GRAPH_ID,
+                connectedSelectorId = '#' + ctwl.GRAPH_CONNECTED_ELEMENTS_ID,
+                configSelectorId = '#' + ctwl.GRAPH_CONFIG_ELEMENTS_ID,
+                graphLoadingSelectorId = '#' + ctwl.GRAPH_LOADING_ID,
+                connectedGraphView, connectedGraphModel,
+                configGraphView, configGraphModel;
 
-            this.$el.html(graphTemplate);
+            self.$el.html(graphTemplate());
 
-            var connectedGraphView = this.renderConnectedGraph(connectedGraph, selectorId, connectedSelectorId, configSelectorId);
-            this.renderConfigGraph(configGraph, configSelectorId, connectedGraphView);
-        },
+            // setTimeout(function () {
+                connectedGraphView = self.renderConnectedGraph(configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId);
+                connectedGraphModel = connectedGraphView.model;
+                if (contrail.checkIfExist(configGraph)) {
+                    configGraphView = self.renderConfigGraph(configGraph, connectedGraph, selectorId, configSelectorId, connectedSelectorId, connectedGraphView);
+                    configGraphModel = configGraphView.model;
 
-        renderConnectedGraph: function (graphConfig, selectorId, connectedSelectorId, configSelectorId) {
-            var cGraphModelConfig = $.extend(true, {}, graphConfig, {
-                forceFit: true,
-                generateElementsFn: getElements4ConnectedGraphFn(graphConfig, selectorId)
-            });
+                    if ((!configGraphModel.isRequestInProgress()
+                        && !connectedGraphModel.isRequestInProgress())
+                        || (configGraphModel.loadedFromCache && connectedGraphModel.loadedFromCache)) {
 
-            var cGraphViewConfig = {
-                el: $(connectedSelectorId),
-                linkView: joint.shapes.contrail.LinkView,
-                graphModelConfig: cGraphModelConfig,
-                tooltipConfig: ctwgrc.getConnectedGraphTooltipConfig(),
-                clickEvents: {
-                    'cell:pointerclick': cgPointerClick,
-                    'cell:pointerdblclick': cgPointerDblClick,
-                    'blank:pointerdblclick': getCgBlankDblClick(connectedSelectorId, graphConfig)
-                },
-                controlPanel: getControlPanelConfig(graphConfig, selectorId, connectedSelectorId, configSelectorId),
-                successCallback: function (jointObject, directedGraphSize) {
-                    if (jointObject.graph.attributes.focusedElement.type == 'project' && jointObject.graph.elementsDataObj.elements.length == 0) {
-                        var notFoundTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
-                            notFoundConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_NOT_FOUND_PAGE, {
-                                title: ctwm.NO_NETWORK_FOUND,
-                                iconClass: false,
-                                defaultErrorMessage: false,
-                                navLinks: [ctwc.CONFIGURE_NETWORK_LINK_CONFIG]
+                        $(graphLoadingSelectorId).hide();
+                    } else {
+                        if (configGraphModel.isRequestInProgress()) {
+                            configGraphModel.onAllRequestsComplete.subscribe(function () {
+                                if (!connectedGraphModel.isRequestInProgress()) {
+                                    $(graphLoadingSelectorId).hide();
+                                }
                             });
-
-                        $(selectorId).html(notFoundTemplate(notFoundConfig));
-                        return;
-                    } else if (jointObject.graph.attributes.focusedElement.type == 'virtual-network' && jointObject.graph.elementsDataObj.zoomedElements.length == 0) {
-                        var notFoundTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
-                            notFoundConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_NOT_FOUND_PAGE, {
-                                title: ctwm.NO_VM_FOUND,
-                                iconClass: false,
-                                defaultErrorMessage: false
+                        }
+                        if (connectedGraphModel.isRequestInProgress()) {
+                            connectedGraphModel.onAllRequestsComplete.subscribe(function () {
+                                if (!configGraphModel.isRequestInProgress()) {
+                                    $(graphLoadingSelectorId).hide();
+                                }
                             });
-
-                        $(selectorId).html(notFoundTemplate(notFoundConfig));
-                        return;
+                        }
                     }
-
-                    var currentHashParams = layoutHandler.getURLHashParams(),
-                        connectedGraphView = jointObject.paper,
-                        focusedElement = graphConfig.focusedElement;
-
-                    $(connectedSelectorId).data('graph-size', directedGraphSize);
-                    $(connectedSelectorId).data('joint-object', jointObject);
-
-                    adjustConnectedGraphDimension(selectorId, connectedSelectorId, configSelectorId);
-                    panConnectedGraph2Center(focusedElement, connectedSelectorId);
-
-                    highlightElement4ZoomedElement(connectedSelectorId, jointObject, graphConfig);
-
-                    if (contrail.checkIfExist(currentHashParams.clickedElement)) {
-                        highlightConnectedClickedElement(currentHashParams.clickedElement, connectedGraphView)
-                    } else if (focusedElement.type == ctwc.GRAPH_ELEMENT_PROJECT){
-                        removeFaint4AllElements();
-                        removeHighlight4AllElements();
-                    }
-
-                    if (!$(selectorId).find('.refresh i').hasClass('icon-repeat')) {
-                        setTimeout(function(){
-                            $(selectorId).find('.refresh i').removeClass('icon-spin icon-spinner').addClass('icon-repeat');
-                        }, 1000);
+                } else {
+                    if (!connectedGraphModel.isRequestInProgress() || connectedGraphModel.loadedFromCache) {
+                        $(graphLoadingSelectorId).hide();
+                    } else {
+                        connectedGraphModel.onAllRequestsComplete.subscribe(function () {
+                            $(graphLoadingSelectorId).hide();
+                        });
                     }
                 }
-            };
+            // }, 10);
+        },
 
-            var connectedGraphView = new GraphView(cGraphViewConfig);
+        renderConnectedGraph: function (configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId) {
+            var connectedGraphView = new GraphView(getConnectedGraphViewConfig(configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId, this));
             connectedGraphView.render();
             return connectedGraphView;
         },
 
-        renderConfigGraph: function (graphConfig, configSelectorId, connectedGraphView) {
-            var confGraphModelConfig = $.extend(true, {}, graphConfig, {
+        renderConfigGraph: function (configGraph, connectedGraph, selectorId, configSelectorId, connectedSelectorId, connectedGraphView) {
+            var self = this,
+                confGraphModelConfig = $.extend(true, {}, configGraph, {
                 forceFit: false,
                 generateElementsFn: getElements4ConfigGraph
             });
@@ -108,9 +84,18 @@ define([
                 el: $(configSelectorId),
                 width: 150,
                 graphModelConfig: confGraphModelConfig,
-                tooltipConfig: ctwgrc.getConfigGraphTooltipConfig(),
+                tooltipConfig: nmwgrc.getConfigGraphTooltipConfig(),
                 clickEvents: {
                     'cell:pointerclick': getConfgPointerClickFn(connectedGraphView)
+                },
+                successCallback: function (graphView) {
+                    var configGraphModel = graphView.model;
+
+                    $(configSelectorId).data('graph-size', {height: configGraphModel.elementsDataObj.configSVGHeight});
+
+                    if (adjustGraphDimension(configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId, true)) {
+                        onAdjustGraphDimension(configGraph, selectorId, connectedSelectorId, self);
+                    }
                 }
             };
 
@@ -120,69 +105,228 @@ define([
         }
     });
 
-    var getControlPanelConfig = function(graphConfig, selectorId, connectedSelectorId, configSelectorId) {
+    function getConnectedGraphModelConfig(graphConfig) {
+        return $.extend(true, {}, graphConfig, {
+            forceFit: true,
+            generateElementsFn: getElements4ConnectedGraphFn(graphConfig),
+            remote: {
+                successCallback: function (response, contrailGraphModel) {
+                    if (!contrail.checkIfExist(contrailGraphModel.elementsDataObj)
+                        || (contrailGraphModel.attributes.focusedElement.type == ctwc.GRAPH_ELEMENT_PROJECT
+                        && contrailGraphModel.elementsDataObj.elements.length == 0)
+                        || (contrailGraphModel.attributes.focusedElement.type == ctwc.GRAPH_ELEMENT_NETWORK
+                        && (contrailGraphModel.elementsDataObj.zoomedElements.length == 0
+                        || contrailGraphModel.elementsDataObj.zoomedNodeElement.attributes.nodeDetails.more_attributes.vm_count == 0))) {
+
+                        contrailGraphModel.empty = true;
+                        return false;
+                    }
+                }
+            }
+        });
+    }
+
+    function getConnectedGraphViewConfig(configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId, self) {
+        return {
+            el: $(connectedSelectorId),
+            linkView: joint.shapes.contrail.LinkView,
+            graphModelConfig: getConnectedGraphModelConfig(connectedGraph),
+            tooltipConfig: nmwgrc.getConnectedGraphTooltipConfig(),
+            clickEvents: {
+                'cell:pointerclick': getCgPointerClick(self, connectedSelectorId),
+                'cell:pointerdblclick': cgPointerDblClick,
+                'blank:pointerdblclick': getCgBlankDblClick(self, connectedSelectorId, connectedGraph)
+            },
+            controlPanel: getControlPanelConfig(self, configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId),
+            emptyCallback: function (contrailGraphModel) {
+                var notFoundTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                    notFoundConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_NOT_FOUND_PAGE, {
+                        iconClass: false,
+                        defaultErrorMessage: false,
+                        defaultNavLinks: false
+                    }),
+                    blankDblClickFn = getCgBlankDblClick(self, connectedSelectorId, connectedGraph);
+
+                if (!contrail.checkIfExist(contrailGraphModel.elementsDataObj)) {
+                    notFoundConfig.title = ctwm.NO_DATA_FOUND;
+                } else if (contrailGraphModel.attributes.focusedElement.type == ctwc.GRAPH_ELEMENT_PROJECT && contrailGraphModel.elementsDataObj.elements.length == 0) {
+                    notFoundConfig.title = ctwm.NO_NETWORK_FOUND;
+                } else if (contrailGraphModel.attributes.focusedElement.type == ctwc.GRAPH_ELEMENT_NETWORK) {
+                    notFoundConfig.title = ctwm.NO_VM_FOUND;
+                }
+                $(selectorId).html(notFoundTemplate(notFoundConfig));
+
+                $(selectorId)
+                    .off('dblclick', blankDblClickFn)
+                    .on('dblclick', blankDblClickFn);
+            },
+            failureCallback: function (contrailGraphModel) {
+                var xhr = contrailGraphModel.errorList[0],
+                    notFoundTemplate = contrail.getTemplate4Id(cowc.TMPL_NOT_FOUND_MESSAGE),
+                    notFoundConfig = $.extend(true, {}, cowc.DEFAULT_CONFIG_ERROR_PAGE, {errorMessage: xhr.responseText}),
+                    blankDblClickFn = getCgBlankDblClick(self, connectedSelectorId, connectedGraph);
+
+                if (!(xhr.status === 0 && xhr.statusText === 'abort')) {
+                    $(selectorId).html(notFoundTemplate(notFoundConfig));
+
+                    $(selectorId)
+                        .off('dblclick', blankDblClickFn)
+                        .on('dblclick', blankDblClickFn);
+                }
+            },
+            successCallback: function (graphView) {
+                var connectedGraphModel = graphView.model,
+                    directedGraphSize = connectedGraphModel.directedGraphSize;
+
+
+                $(connectedSelectorId).data('graph-size', directedGraphSize);
+                $(connectedSelectorId).data('graphView', graphView);
+
+                if (adjustGraphDimension(configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId, true)) {
+                    onAdjustGraphDimension(connectedGraph, selectorId, connectedSelectorId, self);
+                }
+            }
+        }
+    }
+
+    function getControlPanelConfig(connectedGraphSelf, configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId) {
         return {
             default: {
                 zoom: {
                     enabled: true,
                     selectorId: connectedSelectorId,
                     config: {
-                        onReset: function() {
-                            var focusedElement = graphConfig.focusedElement;
-                            panConnectedGraph2Center(focusedElement, connectedSelectorId)
+                        focalZoom: true,
+                        onReset: function () {
+                            var focusedElement = connectedGraph.focusedElement;
+                            panConnectedGraph2Center(focusedElement, connectedSelectorId);
+                            $(configSelectorId).panzoom('resetPan');
                         }
                     }
                 }
             },
             custom: {
                 resize: {
-                    iconClass: 'icon-resize-full',
+                    iconClass: 'fa fa-expand',
                     title: 'Resize',
                     events: {
-                        click: function() {
-                            return function(event) {
-                                var focusedElement = graphConfig.focusedElement;
-                                $(this).find('i').toggleClass('icon-resize-full').toggleClass('icon-resize-small');
-                                adjustConnectedGraphDimension(selectorId, connectedSelectorId, configSelectorId);
-                                panConnectedGraph2Center(focusedElement, connectedSelectorId)
-                            }
+                        click: function (e, self, controlPanelSelector) {
+                            $(self).find('i').addClass('fa fa-spin fa-spinner');
+                            setTimeout(function () {
+                                $(self).find('i').removeClass('fa-spin fa-spinner');
+                                $(self).find('i').toggleClass('fa-expand').toggleClass('fa-compress');
+                                adjustGraphDimension(configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId, false);
+                                $(connectedSelectorId).panzoom('reset');
+                                $(controlPanelSelector).find('.control-panel-item').removeClass('disabled');
+                                $(self).removeClass('refreshing');
+                            }, 200);
                         }
                     }
                 },
                 realign: {
-                    iconClass: function (jointObject) {
-                        var rankDir = jointObject.graph.rankDir;
-                        return ((rankDir == ctwc.GRAPH_DIR_TB) ? 'icon-align-left' : 'icon-align-center');
+                    iconClass: function (graphView) {
+                        var rankDir = graphView.model.rankDir;
+                        return ((rankDir == ctwc.GRAPH_DIR_TB) ? 'fa fa-bars fa-rotate-90' : 'fa fa-bars');
                     },
                     title: 'Change Direction',
                     events: {
-                        click: function() {
-                            return function (event) {
-                                var jointObject = $(connectedSelectorId).data('joint-object'),
-                                    connectedGraphView = jointObject.paper;
+                        click: function (e, self, controlPanelSelector) {
+                            var connectedGraphView = $(connectedSelectorId).data('graphView'),
+                                connectedGraphModel = connectedGraphView.model;
 
-                                if ($(this).find('i').hasClass('icon-align-left')) {
-                                    connectedGraphView.model.reLayoutGraph(ctwc.GRAPH_DIR_LR);
-                                } else if ($(this).find('i').hasClass('icon-align-center')) {
-                                    connectedGraphView.model.reLayoutGraph(ctwc.GRAPH_DIR_TB);
+                            setLoadingScreen(connectedGraphModel);
+                            if ($(self).find('i').hasClass('fa-rotate-90')) {
+                                $(self).find('i').removeClass('fa-rotate-90').toggleClass('fa-spin fa-spinner');
+                                setTimeout(function () {
+                                    connectedGraphModel.reLayoutGraph(ctwc.GRAPH_DIR_LR);
+                                    //Hack to set width for Webkit browser
+                                    var width = $(connectedSelectorId + ' svg').attr('width');
+                                    $(connectedSelectorId + ' svg').attr('width', width);
+                                }, 200)
+                            } else if ($(self).find('i').hasClass('fa-bars')) {
+                                $(self).find('i').removeClass('fa-bars').toggleClass('fa-spin fa-spinner');
+                                setTimeout(function () {
+                                    connectedGraphModel.reLayoutGraph(ctwc.GRAPH_DIR_TB);
+                                    var width = $(connectedSelectorId + ' svg').attr('width');
+                                    $(connectedSelectorId + ' svg').attr('width', width);
+                                }, 200);
+                            }
+                        }
+                    }
+                },
+                search: {
+                    iconClass: 'fa fa-search',
+                    title: 'Search',
+                    events: {
+                        click: function (e, self, controlPanelSelector) {
+                            var connectedGraphView = $(connectedSelectorId).data('graphView'),
+                                connectedGraphModel = connectedGraphView.model,
+                                chartControlPanelExpandedSelector = $(selectorId).find('.control-panel-expanded-container'),
+                                controlPanelExpandedTemplateConfig = {},
+                                elementMap = connectedGraphModel.elementMap,
+                                nodeSearchDropdownData = connectedGraphModel.nodeSearchDropdownData;
+
+                            if (chartControlPanelExpandedSelector.find('.control-panel-filter-container').length == 0) {
+                                var controlPanelExpandedTemplate = contrail.getTemplate4Id(ctwc.TMPL_GRAPH_CONTROL_PANEL_SEARCH);
+
+                                chartControlPanelExpandedSelector.html(controlPanelExpandedTemplate(controlPanelExpandedTemplateConfig));
+                            }
+
+                            $(self).toggleClass('active');
+                            $(self).toggleClass('refreshing');
+
+                            chartControlPanelExpandedSelector.toggle();
+
+                            if (chartControlPanelExpandedSelector.is(':visible')) {
+                                if (!contrail.checkIfExist(nodeSearchDropdownData)) {
+
+                                    nodeSearchDropdownData = $.map(elementMap.node, function (value, name) {
+                                        var nameArray = name.split(':'),
+                                            nameLength = nameArray.length;
+
+                                        return {
+                                            name: nameArray[nameLength - 1],
+                                            value: name
+                                        };
+                                    });
+
+                                    connectedGraphModel.nodeSearchDropdownData = nodeSearchDropdownData;
                                 }
+
+                                chartControlPanelExpandedSelector.find('.graph-control-panel-search-dropdown').contrailDropdown({
+                                    placeholder: 'Search',
+                                    dataTextField: 'name',
+                                    dataValueField: 'value',
+                                    data: nodeSearchDropdownData,
+                                    selecting: function (e) {
+
+                                        var elementName = e.object['value'],
+                                            elementObj = connectedGraphModel.getCell(elementMap.node[elementName]);
+
+                                        $(connectedSelectorId).panzoom("reset");
+                                        panConnectedGraph2Element(elementObj, connectedSelectorId);
+                                        showClickedElement(connectedGraphSelf, elementObj, connectedSelectorId);
+                                    }
+                                })
+
+                            } else {
+                                $(controlPanelSelector).find('.control-panel-item').removeClass('disabled');
                             }
                         }
                     }
                 },
                 refresh: {
-                    iconClass: 'icon-repeat',
+                    iconClass: 'fa fa-repeat',
                     title: 'Refresh',
                     events: {
-                        click: function() {
-                            return function (event) {
-                                var jointObject = $(connectedSelectorId).data('joint-object'),
-                                    connectedGraphView = jointObject.paper;
+                        click: function (e, self, controlPanelSelector) {
+                            var connectedGraphView = $(connectedSelectorId).data('graphView'),
+                                connectedGraphModel = connectedGraphView.model;
 
-                                if ($(this).find('i').hasClass('icon-repeat')) {
-                                    $(this).find('i').removeClass('icon-repeat').toggleClass('icon-spin icon-spinner');
-                                    connectedGraphView.refreshData();
-                                }
+                            setLoadingScreen(connectedGraphModel);
+                            if ($(self).find('i').hasClass('fa-repeat')) {
+                                $(self).find('i').removeClass('fa-repeat').toggleClass('fa-spin fa-spinner');
+                                connectedGraphView.refreshData();
                             }
                         }
                     }
@@ -191,172 +335,326 @@ define([
         };
     };
 
-    function getElements4ConnectedGraphFn(graphconfig, selectorId) {
+    function setLoadingScreen(connectedGraphModel) {
+        var graphLoadingSelectorId = '#' + ctwl.GRAPH_LOADING_ID;
+        $(graphLoadingSelectorId).show();
+
+        connectedGraphModel.onAllRequestsComplete.subscribe(function () {
+            $(graphLoadingSelectorId).hide();
+        });
+    }
+
+    function getElements4ConnectedGraphFn(graphconfig) {
         var focusedElementType = graphconfig.focusedElement.type,
-            fqName = graphconfig.focusedElement.name.fqName;
+            fqName = decodeURIComponent(graphconfig.focusedElement.name.fqName);
 
         return function (response, elementMap, rankDir) {
-            var connectedElements = [],
-                zoomedElements = [],
+            var elements4ConnectedGraph = [],
                 nodes = response['nodes'],
-                zoomedNodeElement = null,
-                links = response['links'],
-                zoomedNode = null;
+                zoomedNodeElement = null, zoomedElements = [], zoomedNodeKey = null,
+                links = response['links'];
 
             if (focusedElementType == ctwc.GRAPH_ELEMENT_PROJECT) {
-                createNodeElements(nodes, connectedElements, elementMap);
-            } else {
-                var zoomedNodeKey = null,
-                    options = null;
+                createNodeElements(nodes, elements4ConnectedGraph, elementMap);
+                createLinkElements(links, elements4ConnectedGraph, elementMap);
 
-                $.each(nodes, function (nodeKey, nodeValue) {
-                    if (nodeValue.name == fqName) {
-                        zoomedNode = nodeValue;
-                        zoomedNodeKey = nodeKey;
+                var linkedElements = elementMap['linkedElements'],
+                    nodeSeparation = 100, groupedElements = [],
+                    groupedElementsCount, maxRowCount,
+                    groupedParentWidth, groupedParentHeight;
 
-                        if (rankDir == ctwc.GRAPH_DIR_TB) {
-                            options = getVerticalZoomedVMSize($(selectorId).height(), $(selectorId).width(), nodeValue);
-                        } else if (rankDir == ctwc.GRAPH_DIR_LR) {
-                            options = getHorizontalZoomedVMSize($(selectorId).height(), $(selectorId).width(), nodeValue);
-                        } else {
-                            options = getZoomedVMSize($(selectorId).height(), $(selectorId).width(), nodeValue);
-                        }
+                if (linkedElements.length > 0) {
+                    return {
+                        elements: elements4ConnectedGraph,
+                        nodes: nodes,
+                        links: links,
+                        zoomedNodeElement: zoomedNodeElement,
+                        zoomedElements: zoomedElements
+                    };
+                } else {
+                    groupedElements = elements4ConnectedGraph;
+                    groupedElementsCount = groupedElements.length;
+                    maxRowCount = Math.ceil(Math.sqrt(groupedElementsCount));
+                    groupedParentWidth = maxRowCount * nodeSeparation;
+                    groupedParentHeight = maxRowCount * nodeSeparation;
 
-                        zoomedNodeElement = createCloudZoomedNodeElement(zoomedNode, {
-                            width: options['widthZoomedElement'],
-                            height: options['heightZoomedElement']
+                    for (var i = 0; i < groupedElements.length; i++) {
+                        var groupedElement = groupedElements[i],
+                            position = getGroupedElementPosition(i, maxRowCount, nodeSeparation);
+
+                        groupedElement.attributes.position.x = position.x;
+                        groupedElement.attributes.position.y = position.y;
+                    }
+
+                    if (groupedElements.length > 0) {
+                        var groupParentElement = new joint.shapes.contrail.GroupParentElement({
+                            size: {width: groupedParentWidth, height: groupedParentHeight}
                         });
 
-                        connectedElements.push(zoomedNodeElement);
-                        elementMap.node[fqName] = zoomedNodeElement.id;
+                        linkedElements.push(groupParentElement);
+                    }
 
-                        if (rankDir == ctwc.GRAPH_DIR_TB) {
-                            generateVerticalVMGraph(zoomedElements, zoomedNodeElement, options, elementMap);
-                        } else if (rankDir == ctwc.GRAPH_DIR_LR) {
-                            generateHorizontalVMGraph(zoomedElements, zoomedNodeElement, options, elementMap);
-                        } else {
-                            generateVMGraph(zoomedElements, zoomedNodeElement, options, elementMap);
-                        }
+                    return {
+                        elements: linkedElements,
+                        nodes: nodes,
+                        links: links,
+                        zoomedNodeElement: groupParentElement,
+                        zoomedElements: groupedElements
+                    };
+                }
+
+            } else if (focusedElementType == ctwc.GRAPH_ELEMENT_NETWORK) {
+                $.each(nodes, function (nodeKey, nodeValue) {
+                    if (nodeValue.name === fqName) {
+                        zoomedNodeKey = nodeKey;
+                        zoomedNodeElement = createZoomedVNNode(nodeValue, getZoomedVNSize(rankDir, nodeValue));
+                        zoomedElements = generateVMGraph(rankDir, zoomedNodeElement, nodeValue, elementMap, elements4ConnectedGraph);
+
+                        return;
                     }
                 });
 
                 nodes.splice(zoomedNodeKey, 1);
-                createNodeElements(nodes, connectedElements, elementMap);
-            }
-            createLinkElements(links, connectedElements, elementMap);
+                createNodeElements(nodes, elements4ConnectedGraph, elementMap);
+                createLinkElements(links, elements4ConnectedGraph, elementMap);
 
-            return {
-                elements: connectedElements,
-                nodes: nodes,
-                links: links,
-                zoomedNodeElement: zoomedNodeElement,
-                zoomedElements: zoomedElements
-            };
+                return {
+                    elements: elements4ConnectedGraph,
+                    nodes: nodes,
+                    links: links,
+                    zoomedNodeElement: zoomedNodeElement,
+                    zoomedElements: zoomedElements
+                };
+            } else if (focusedElementType == ctwc.GRAPH_ELEMENT_INSTANCE) {
+                createNodeElements(nodes, elements4ConnectedGraph, elementMap);
+                createInterfaceLink(links, elements4ConnectedGraph, elementMap);
+
+                return {
+                    elements: elements4ConnectedGraph,
+                    nodes: nodes,
+                    links: links,
+                    zoomedNodeElement: zoomedNodeElement,
+                    zoomedElements: zoomedElements
+                };
+            }
         };
     };
 
+    function getGroupedElementPosition(index, maxRowCount, nodeSeparation) {
+        index = index + 1;
+
+        var row = Math.floor(index / maxRowCount),
+            column = index % maxRowCount;
+
+        return {
+            x: nodeSeparation * (column == 0 ? (maxRowCount - 1) : (column - 1)),
+            y: nodeSeparation * (column == 0 ? (row - 1) : row)
+        }
+    };
+
     function getElements4ConfigGraph(response, elementMap) {
-        var configElements = [],
+        var elements4ConfigGraph = [],
             collections = {},
             configData = response['configData'],
             configSVGHeight = 0;
 
         createNodes4ConfigData(configData, collections);
 
-        configSVGHeight = createCollectionElements(collections, configElements, elementMap);
+        configSVGHeight = createCollectionElements(collections, elements4ConfigGraph, elementMap);
 
         return {
-            elements: configElements,
+            elements: elements4ConfigGraph,
             configSVGHeight: configSVGHeight
         };
     };
 
-    function adjustConnectedGraphDimension(selectorId, connectedSelectorId, configSelectorId) {
+    function adjustGraphDimension(configGraph, connectedGraph, selectorId, connectedSelectorId, configSelectorId, initResizeFlag) {
         /*
-         * Height logic (graphHeight[g], availableHeight[g], minHeight[m])
-         * a < m     = m
-         * g < m < a = m
-         * m < g < a = g
-         * m < a < g = a
+         * Condition to check if config and connected graph exists and if exists, are loaded
          */
+        if ((!contrail.checkIfExist(configGraph) || contrail.checkIfExist($(configSelectorId).data('graph-size'))) &&
+            (!contrail.checkIfExist(connectedGraph) || contrail.checkIfExist($(connectedSelectorId).data('graph-size')))) {
+            var resizeFlag = ($(selectorId).parents('.visualization-container').find('.fa-compress').is(':visible')),
+                tabHeight = resizeFlag ? 140 : 510, //TODO - move to constants
+                minHeight = 275,
+                availableHeight = window.innerHeight - tabHeight,
+                connectedGraphSize = $(connectedSelectorId).data('graph-size'),
+                configGraphSize = $(configSelectorId).data('graph-size'),
+                connectedGraphView = $(connectedSelectorId).data('graphView');
 
-        var resizeFlag = ($(selectorId).parents('.visualization-container').find('.icon-resize-small').is(':visible')),
-            tabHeight = resizeFlag ? 155 : 435, //TODO - move to constants
-            minHeight = 300,
-            availableHeight = window.innerHeight - tabHeight,
-            directedGraphSize = $(connectedSelectorId).data('graph-size'),
-            jointObject = $(connectedSelectorId).data('joint-object'),
-            connectedGraphView = jointObject.paper,
-            connectedGraphWidth = contrail.checkIfKeyExistInObject(true, directedGraphSize, 'width') ? directedGraphSize.width : 0,
-            connectedGraphHeight = contrail.checkIfKeyExistInObject(true, directedGraphSize, 'height') ? directedGraphSize.height : 0,
-            configGraphHeight = $(configSelectorId + ' svg').attr('height'),
-            graphHeight = Math.max(connectedGraphHeight, configGraphHeight),
-            adjustedHeight = availableHeight;
+            if (!contrail.checkIfExist(connectedGraphView)) {
+                return;
+            }
 
-        if(!resizeFlag) {
-            if (availableHeight < minHeight) {
-                adjustedHeight = minHeight;
-            } else {
-                if (graphHeight < minHeight) {
+            var connectedGraphWidth = contrail.checkIfKeyExistInObject(true, connectedGraphSize, 'width') ? connectedGraphSize.width : 0,
+                connectedGraphHeight = contrail.checkIfKeyExistInObject(true, connectedGraphSize, 'height') ? connectedGraphSize.height : 0,
+                configGraphHeight = contrail.checkIfKeyExistInObject(true, configGraphSize, 'height') ? configGraphSize.height : 0,
+                actualGraphHeight = Math.max(configGraphHeight, (connectedGraphHeight - cowc.GRAPH_MARGIN_BOTTOM - cowc.GRAPH_MARGIN_TOP)),
+                adjustedHeight = availableHeight;
+
+            if (!resizeFlag) {
+                if (availableHeight < minHeight) {
                     adjustedHeight = minHeight;
                 } else {
-                    if (graphHeight < availableHeight) {
-                        adjustedHeight = graphHeight;
+                    if (actualGraphHeight < minHeight) {
+                        adjustedHeight = minHeight;
+                    } else {
+                        if (actualGraphHeight < availableHeight) {
+                            adjustedHeight = actualGraphHeight;
+                        }
                     }
                 }
             }
+
+            if (initResizeFlag && ((actualGraphHeight - adjustedHeight) > 20)) {
+                $(selectorId).parents('.visualization-container').find('.fa-expand')
+                    .removeClass('fa-expand').addClass('fa fa-compress');
+
+                adjustedHeight = window.innerHeight - 140;
+            }
+
+            connectedGraphView.setDimensions(connectedGraphWidth, connectedGraphHeight, 1);
+
+            $(connectedSelectorId).width(connectedGraphWidth);
+
+            $(selectorId).parent().height(adjustedHeight);
+            $(selectorId).parent().css('width', '100%');
+
+            $(connectedSelectorId).parents('.col1').height(adjustedHeight);
+            $(configSelectorId).parents('.col2').height(adjustedHeight + 5);
+
+            if (connectedGraphHeight < adjustedHeight) {
+                $(connectedSelectorId + ' svg').attr('height', adjustedHeight);
+            }
+
+            if (configGraphHeight < adjustedHeight) {
+                $(configSelectorId + ' svg').attr('height', configGraphHeight);
+            }
+
+            return true;
         }
-
-        connectedGraphView.setDimensions(Math.max($(selectorId).width(), connectedGraphWidth) + cowc.GRAPH_MARGIN_RIGHT,
-            connectedGraphHeight + cowc.GRAPH_MARGIN_BOTTOM, 1);
-
-        $(selectorId).parent().height(adjustedHeight);
-        $(selectorId).parent().css('width', '100%');
-
-        $(connectedSelectorId).parents('.col1').height(adjustedHeight);
-        $(configSelectorId).parents('.col3').height(adjustedHeight);
-
-        if(connectedGraphHeight < adjustedHeight) {
-            $(connectedSelectorId + ' svg').attr('height', adjustedHeight);
-        }
-
-        if(configGraphHeight < adjustedHeight) { //TODO - Needs to be tested with multiple config elements
-            $(configSelectorId + ' svg').attr('height', adjustedHeight);
-        }
+        return false;
     };
 
-    var panConnectedGraph2Center = function(focusedElement, connectedSelectorId) {
+    /*
+     * Function to perform actions (panning to center, highlighting focused element etc) after adjustGraphDimension
+     */
+    function onAdjustGraphDimension(graphConfig, selectorId, connectedSelectorId, self) {
+        var connectedGraphView = $(connectedSelectorId).data('graphView'),
+            connectedGraphModel = connectedGraphView.model,
+            currentHashParams = layoutHandler.getURLHashParams(),
+            focusedElement = graphConfig.focusedElement,
+            elementMap = connectedGraphModel.elementMap,
+            elementObj;
+
+        panConnectedGraph2Center(focusedElement, connectedSelectorId);
+
+        highlightElement4ZoomedElement(connectedSelectorId, graphConfig);
+
+        if (contrail.checkIfExist(currentHashParams.clickedElement)) {
+            elementObj = connectedGraphModel.getCell(elementMap.node[currentHashParams.clickedElement.fqName]);
+            panConnectedGraph2Element(elementObj, connectedSelectorId);
+            showClickedElement(self, elementObj, connectedSelectorId);
+        } else if (focusedElement.type == ctwc.GRAPH_ELEMENT_PROJECT) {
+            removeFaint4AllElements();
+            removeHighlight4AllElements();
+        }
+
+        if (!$(selectorId).find('.refresh i').hasClass('fa-repeat')) {
+            setTimeout(function () {
+                $(selectorId).find('.refresh i').removeClass('fa-spin fa-spinner').addClass('fa fa-repeat');
+            }, 200);
+        }
+    }
+
+    function panConnectedGraph2Center(focusedElement, connectedSelectorId) {
         var directedGraphSize = $(connectedSelectorId).data('graph-size'),
             connectedGraphWidth = contrail.checkIfKeyExistInObject(true, directedGraphSize, 'width') ? directedGraphSize.width : 0,
             connectedGraphHeight = contrail.checkIfKeyExistInObject(true, directedGraphSize, 'height') ? directedGraphSize.height : 0,
             availableGraphWidth = $(connectedSelectorId).parents('.col1').width(),
             availableGraphHeight = $(connectedSelectorId).parents('.col1').height(),
+            actualConnectedGraphWidth = connectedGraphWidth - cowc.GRAPH_MARGIN_LEFT - cowc.GRAPH_MARGIN_RIGHT,
+            actualConnectedGraphHeight = connectedGraphHeight - cowc.GRAPH_MARGIN_BOTTOM - cowc.GRAPH_MARGIN_TOP,
             panX = (availableGraphWidth - connectedGraphWidth) / 2,
-            panY = (availableGraphHeight - connectedGraphHeight) / 2;
+            panY = (availableGraphHeight - connectedGraphHeight) / 2,
+            zoomFocal, zoomScale, zoomScaleX = 1, zoomScaleY = 1;
 
-        if (focusedElement.type == ctwc.GRAPH_ELEMENT_PROJECT && (connectedGraphHeight - cowc.GRAPH_MARGIN_BOTTOM - cowc.GRAPH_MARGIN_TOP) > availableGraphHeight) {
-            panY = 35 - cowc.GRAPH_MARGIN_TOP;
+        if (actualConnectedGraphHeight > availableGraphHeight) {
+            //if (focusedElement.type == ctwc.GRAPH_ELEMENT_PROJECT) {
+            //    panY = 35 - cowc.GRAPH_MARGIN_TOP;
+            //}
+            zoomScaleX = availableGraphHeight / actualConnectedGraphHeight;
         }
 
+        if (actualConnectedGraphWidth > availableGraphWidth) {
+            //if (focusedElement.type == ctwc.GRAPH_ELEMENT_PROJECT) {
+            //    panX = 35 - cowc.GRAPH_MARGIN_LEFT;
+            //}
+            zoomScaleY = availableGraphWidth / actualConnectedGraphWidth;
+        }
+
+        zoomScale = Math.min(zoomScaleX, zoomScaleY);
+
         $(connectedSelectorId).panzoom("resetPan");
-        $(connectedSelectorId).panzoom("pan", panX, panY, { relative: true });
-        $(connectedSelectorId).css({'backface-visibility':'initial'});
+        $(connectedSelectorId).panzoom("pan", panX, panY, {relative: true});
+        $(connectedSelectorId).css({'backface-visibility': 'initial'});
+
+        //Safari related hack to orient the graph correctly
+        $(connectedSelectorId).redraw();
     };
 
-    var createVirtualMachineNode = function(position, size, node, srcVNDetails) {
+    function panConnectedGraph2Element(elementObj, connectedSelectorId) {
+        if (contrail.checkIfExist(elementObj)) {
+            var availableGraphWidth = $(connectedSelectorId).parents('.col1').width(),
+                availableGraphHeight = $(connectedSelectorId).parents('.col1').height(),
+                panX = (availableGraphWidth / 2) - (elementObj.attributes.position.x + (elementObj.attributes.size.width / 2)),
+                panY = (availableGraphHeight / 2) - (elementObj.attributes.position.y + (elementObj.attributes.size.height / 2));
+
+            $(connectedSelectorId).panzoom("resetPan");
+            $(connectedSelectorId).panzoom("pan", panX, panY, {relative: true});
+        }
+    }
+
+    function createZoomedVNNode(nodeDetails, size) {
+        var zoomedVNNode = new joint.shapes.contrail.ZoomedVirtualNetwork({
+            size: size,
+            attrs: {
+                rect: size,
+                text: {
+                    text: contrail.truncateText(nodeDetails['name'].split(":")[2], 20),
+                    'ref-x': .5,
+                    'ref-y': -20
+                }
+            },
+            elementType: ctwc.GRAPH_ELEMENT_NETWORK
+        });
+        zoomedVNNode['attributes']['nodeDetails'] = nodeDetails;
+        return zoomedVNNode;
+    }
+
+    function createVMNode(position, size, vmName, srcVNDetails, uve, elementOrientation) {
         var nodeType = ctwc.GRAPH_ELEMENT_INSTANCE,
-            element, options;
+            element, options,
+            iconClass = 'icon-contrail-virtual-machine', interfaceCount = 0;
+
+        if (contrail.checkIfExist(uve)) {
+            interfaceCount = uve.UveVirtualMachineAgent.interface_list.length;
+            iconClass += (interfaceCount > 1) ? '-interface' : '';
+        }
+
+        iconClass += (contrail.checkIfExist(elementOrientation) ? '-' + elementOrientation : '');
 
         options = {
+            type: 'contrail.VirtualMachine.no-drag-element',
             position: position,
             size: size,
             font: {
-                iconClass: 'icon-contrail-virtual-machine'
+                iconClass: iconClass
             },
             nodeDetails: {
-                fqName: node,
-                node_type: nodeType,
-                srcVNDetails: srcVNDetails
+                fqName: vmName,
+                srcVNDetails: srcVNDetails,
+                uve: uve
             },
             elementType: nodeType
         };
@@ -364,158 +662,170 @@ define([
         return element;
     };
 
-    var createVirtualMachineLink = function(position, size){
+    function createVMCenterLink(position, size) {
         var rect = new joint.shapes.basic.Rect({
-            type: 'VirtualMachineLink',
+            type: 'VirtualMachineLink no-drag-element',
             position: position, size: size,
-            attrs: {rect:{stroke: '#3182bd', opacity: 1, fill: '#3182bd'}}
+            attrs: {rect: {stroke: '#3182bd', opacity: 1, fill: '#3182bd'}}
         });
         return rect;
     };
 
-    function generateVMGraph(zoomedElements, zoomedNodeElement, options, elementMap) {
-        var vmMargin = options['VMMargin'],
-            vmWidth = options['VMWidth'],
-            vmHeight = options['VMHeight'],
-            xSeparation = vmWidth + vmMargin,
-            ySeparation = vmHeight + vmMargin,
-            vmPerRow = options['vmPerRow'],
-            vmLength = options['noOfVMsToDraw'],
-            vmNode, vmList = options['vmList'];
+    function getZoomedVNSize(rankDir, zoomedVNDetails) {
+        var vmCount = zoomedVNDetails.more_attributes.vm_count,
+            vmWidth = ctwc.VM_GRAPH_SIZE.width + ctwc.VM_GRAPH_MARGIN.left + ctwc.VM_GRAPH_MARGIN.right,
+            vmHeight = ctwc.VM_GRAPH_SIZE.height + ctwc.VM_GRAPH_MARGIN.top + ctwc.VM_GRAPH_MARGIN.bottom,
+            zoomedVNWidth, zoomedVNHeight;
 
-        var xOrigin = vmMargin / 2,
-            yOrigin = vmMargin / 2,
-            position = {},
-            size = {width: vmWidth, height: vmHeight};
+        if (rankDir == ctwc.GRAPH_DIR_TB) {
+            zoomedVNWidth = vmHeight * ((vmCount > 1) ? 2 : 1);
+            zoomedVNHeight = ((vmCount < ctwc.MAX_VM_TO_PLOT) ? vmCount : ctwc.MAX_VM_TO_PLOT) * vmWidth;
+        } else if (rankDir == ctwc.GRAPH_DIR_LR) {
+            zoomedVNWidth = ((vmCount < ctwc.MAX_VM_TO_PLOT) ? vmCount : ctwc.MAX_VM_TO_PLOT) * vmWidth;
+            zoomedVNHeight = vmHeight * ((vmCount > 1) ? 2 : 1);
+        }
 
-        var centerLineHeight = 0.1,
-            xFactor = 0, yFactor = -1;
+        return {
+            width: zoomedVNWidth + ctwc.ZOOMED_VN_MARGIN.left + ctwc.ZOOMED_VN_MARGIN.right,
+            height: zoomedVNHeight + ctwc.ZOOMED_VN_MARGIN.top + ctwc.ZOOMED_VN_MARGIN.bottom
+        };
+    }
 
-        for (var i = 0; i < vmLength; i++) {
-            if (i % vmPerRow == 0) {
-                xFactor = 0;
-                yFactor++;
+    function generateVMGraph(rankDir, zoomedNodeElement, nodeValue, elementMap, elements4ConnectedGraph) {
+        var zoomedElements = [];
+        elements4ConnectedGraph.push(zoomedNodeElement);
+        elementMap.node[nodeValue.name] = zoomedNodeElement.id;
+
+        if (rankDir == ctwc.GRAPH_DIR_TB) {
+            zoomedElements = generateVerticalVMGraph(zoomedNodeElement, nodeValue, elementMap);
+        } else if (rankDir == ctwc.GRAPH_DIR_LR) {
+            zoomedElements = generateHorizontalVMGraph(zoomedNodeElement, nodeValue, elementMap);
+        }
+
+        return zoomedElements;
+    }
+
+    function generateHorizontalVMGraph(zoomedNodeElement, zoomedVNDetails, elementMap) {
+        var zoomedElements = [],
+            vmCount = zoomedVNDetails.more_attributes.vm_count,
+            vmList = zoomedVNDetails.more_attributes.virtualmachine_list,
+            vmDetailsMap = zoomedVNDetails.more_attributes.virtualmachine_details,
+            vmWidth = ctwc.VM_GRAPH_SIZE.width + ctwc.VM_GRAPH_MARGIN.left + ctwc.VM_GRAPH_MARGIN.right,
+            vmHeight = ctwc.VM_GRAPH_SIZE.height + ctwc.VM_GRAPH_MARGIN.top + ctwc.VM_GRAPH_MARGIN.bottom,
+            vmToPlot = (vmCount > ctwc.MAX_VM_TO_PLOT) ? ctwc.MAX_VM_TO_PLOT : vmCount,
+            vmCenterLinkThickness = ctwc.VM_CENTER_LINK_THICKNESS,
+            zoomedVNPositionX = ctwc.ZOOMED_VN_MARGIN.left,
+            zoomedVNPositionY = ctwc.ZOOMED_VN_MARGIN.top + ctwc.VM_GRAPH_MARGIN.top,
+            vmCenterLinkPosition = {
+                x: zoomedVNPositionX,
+                y: zoomedVNPositionY + ctwc.VM_GRAPH_SIZE.height
+            },
+            vmCenterLinkSize = {width: vmToPlot * vmWidth, height: vmCenterLinkThickness},
+            vmCenterLinkNode = createVMCenterLink(vmCenterLinkPosition, vmCenterLinkSize),
+            vmNode, vmUVE, vmPosition = {};
+
+        zoomedElements.push(vmCenterLinkNode);
+        zoomedNodeElement.embed(vmCenterLinkNode);
+
+        for (var i = 0; i < vmToPlot; i++) {
+            vmUVE = contrail.checkIfExist(vmDetailsMap) ? vmDetailsMap[vmList[i]] : null;
+            vmPosition = {
+                x: zoomedVNPositionX + ctwc.VM_GRAPH_MARGIN.left + (vmWidth * i),
+                y: zoomedVNPositionY
+            };
+
+            if (i % 2 == 0) {
+                vmNode = createVMNode(vmPosition, ctwc.VM_GRAPH_SIZE, vmList[i], zoomedVNDetails, vmUVE, 'top');
+            } else {
+                vmPosition.y += ctwc.VM_GRAPH_SIZE.height + vmCenterLinkThickness;
+                vmNode = createVMNode(vmPosition, ctwc.VM_GRAPH_SIZE, vmList[i], zoomedVNDetails, vmUVE, 'bottom');
             }
 
-            position = {x: xOrigin + (xSeparation * xFactor), y: yOrigin + ((ySeparation + centerLineHeight) * yFactor)};
-            vmNode = createVirtualMachineNode(position, size, vmList[i], options['srcVNDetails']);
-            elementMap.node[vmList[i]] = vmNode.id;
-            xFactor++;
+            elementMap.node[(vmUVE != null) ? vmUVE['UveVirtualMachineAgent']['vm_name'] : vmList[i]] = vmNode.id;
             zoomedElements.push(vmNode);
+            zoomedNodeElement.embed(vmNode);
         }
 
         return zoomedElements;
     };
 
-    function generateHorizontalVMGraph(zoomedElements, zoomedNodeElement, options, elementMap) {
-        var vmMargin = options['VMMargin'],
-            vmWidth = options['VMWidth'],
-            vmHeight = options['VMHeight'],
-            xSeparation = vmWidth + vmMargin,
-            ySeparation = vmHeight + vmMargin,
-            vmPerRow = options['vmPerRow'],
-            vmLength = options['noOfVMsToDraw'],
-            vmNode, vmList = options['vmList'];
+    function generateVerticalVMGraph(zoomedNodeElement, zoomedVNDetails, elementMap) {
+        var zoomedElements = [],
+            vmCount = zoomedVNDetails.more_attributes.vm_count,
+            vmList = zoomedVNDetails.more_attributes.virtualmachine_list,
+            vmDetailsMap = zoomedVNDetails.more_attributes.virtualmachine_details,
+            vmWidth = ctwc.VM_GRAPH_SIZE.width + ctwc.VM_GRAPH_MARGIN.left + ctwc.VM_GRAPH_MARGIN.right,
+            vmHeight = ctwc.VM_GRAPH_SIZE.height + ctwc.VM_GRAPH_MARGIN.top + ctwc.VM_GRAPH_MARGIN.bottom,
+            vmToPlot = (vmCount > ctwc.MAX_VM_TO_PLOT) ? ctwc.MAX_VM_TO_PLOT : vmCount,
+            vmCenterLinkThickness = ctwc.VM_CENTER_LINK_THICKNESS,
+            zoomedVNPositionX = ctwc.ZOOMED_VN_MARGIN.left + ctwc.VM_GRAPH_MARGIN.top + ctwc.ZOOMED_VN_OFFSET_X,
+            zoomedVNPositionY = ctwc.ZOOMED_VN_MARGIN.top,
+            vmCenterLinkPosition = {
+                x: zoomedVNPositionX + ctwc.VM_GRAPH_SIZE.height,
+                y: zoomedVNPositionY
+            },
+            vmCenterLinkSize = {width: vmCenterLinkThickness, height: vmToPlot * vmWidth},
+            vmCenterLinkNode = createVMCenterLink(vmCenterLinkPosition, vmCenterLinkSize),
+            vmNode, vmUVE, vmPosition = {};
 
-        var xOrigin = vmMargin / 2,
-            yOrigin = vmMargin / 2,
-            position = {},
-            size = {width: vmWidth, height: vmHeight},
-            virtualMachineCommonLinkPosition = {}, virtualMachineCommonLinkSize = {},
-            virtualMachineLinkPosition = {}, virtualMachineLinkSize = {};
+        zoomedElements.push(vmCenterLinkNode);
+        zoomedNodeElement.embed(vmCenterLinkNode);
 
-        var xFactor = 0, yFactor = 0, linkThickness = 1, rectThickness = 2, horizontalAdjustFactor = 6;
-        if(vmLength !== 0){
-            virtualMachineCommonLinkPosition = {x: xOrigin - vmWidth/2, y: yOrigin + ySeparation - horizontalAdjustFactor};
-            virtualMachineCommonLinkSize = {width: vmLength * xSeparation + vmWidth/2, height: rectThickness};
+        for (var i = 0; i < vmToPlot; i++) {
+            vmUVE = contrail.checkIfExist(vmDetailsMap) ? vmDetailsMap[vmList[i]] : null;
+            vmPosition = {
+                x: zoomedVNPositionX,
+                y: zoomedVNPositionY + ctwc.VM_GRAPH_MARGIN.left + (vmWidth * i)
+            };
 
-            zoomedElements.push(createVirtualMachineLink(virtualMachineCommonLinkPosition, virtualMachineCommonLinkSize));
-        }
-
-        for (var i = 0; i < vmLength; i++) {
-            position = {x: xOrigin + (xSeparation * xFactor), y: yOrigin + ((ySeparation) * yFactor)};
-            vmNode = createVirtualMachineNode(position, size, vmList[i], options['srcVNDetails']);
-            elementMap.node[vmList[i]] = vmNode.id;
-            zoomedElements.push(vmNode);
-
-            virtualMachineLinkPosition = {x: xOrigin + (xSeparation * xFactor)+ vmWidth/2 +1, y: yOrigin + ((ySeparation) * yFactor) + vmHeight};
-            virtualMachineLinkSize = {width: linkThickness, height: (ySeparation/2) - 6};
-            zoomedElements.push(createVirtualMachineLink(virtualMachineLinkPosition, virtualMachineLinkSize));
-
-            xFactor++;
-        }
-
-        return zoomedElements;
-    };
-
-    function generateVerticalVMGraph(zoomedElements, zoomedNodeElement, options, elementMap) {
-        var vmMargin = options['VMMargin'],
-            vmWidth = options['VMWidth'],
-            vmHeight = options['VMHeight'],
-            xSeparation = vmWidth + vmMargin,
-            ySeparation = vmHeight + vmMargin,
-            vmPerRow = options['vmPerRow'],
-            vmLength = options['noOfVMsToDraw'],
-            vmNode, vmList = options['vmList'];
-
-        var xOrigin = vmMargin / 2,
-            yOrigin = vmMargin / 2,
-            position = {},
-            size = {width: vmWidth, height: vmHeight},
-            virtualMachineCommonLinkPosition = {}, virtualMachineCommonLinkSize = {},
-            virtualMachineLinkPosition = {}, virtualMachineLinkSize = {};
-
-        var centerLineHeight = 0.1,
-            xFactor = 0, yFactor = -1,
-            linkThickness = 1, rectThickness = 2;
-
-        if(vmLength !== 0){
-            virtualMachineCommonLinkPosition = {x: xOrigin + vmWidth + xSeparation/2, y: yOrigin - vmMargin/2};
-            virtualMachineCommonLinkSize = {width: rectThickness, height: vmLength * ySeparation};
-            zoomedElements.push(createVirtualMachineLink(virtualMachineCommonLinkPosition, virtualMachineCommonLinkSize));
-        }
-
-        for (var i = 0; i < vmLength; i++) {
-            if (i % vmPerRow == 0) {
-                xFactor = 0;
-                yFactor++;
+            if (i % 2 === 0) {
+                vmNode = createVMNode(vmPosition, ctwc.VM_GRAPH_SIZE, vmList[i], zoomedVNDetails, vmUVE, 'left');
+            } else {
+                vmPosition.x += ctwc.VM_GRAPH_SIZE.height + vmCenterLinkThickness;
+                vmNode = createVMNode(vmPosition, ctwc.VM_GRAPH_SIZE, vmList[i], zoomedVNDetails, vmUVE, 'right');
             }
-            position = {x: xOrigin + (xSeparation * xFactor), y: yOrigin + ((ySeparation) * yFactor)};
-            vmNode = createVirtualMachineNode(position, size, vmList[i], options['srcVNDetails']);
+
             elementMap.node[vmList[i]] = vmNode.id;
             zoomedElements.push(vmNode);
-
-            virtualMachineLinkPosition = {x: xOrigin + vmWidth + 2, y: yOrigin + ((ySeparation) * yFactor) + vmHeight/2};
-            virtualMachineLinkSize = {width: xSeparation/2 - 2, height: linkThickness};
-            zoomedElements.push(createVirtualMachineLink(virtualMachineLinkPosition, virtualMachineLinkSize));
+            zoomedNodeElement.embed(vmNode);
         }
 
         return zoomedElements;
     };
 
-    var cgPointerClick = function(cellView, evt, x, y) {
-        var clickedElement = cellView.model.attributes,
-            elementNodeType= clickedElement.elementType,
-            elementNodeId = cellView.model.id,
+    function showClickedElement(self, clickedElementModel, connectedSelectorId) {
+        var clickedElement = clickedElementModel.attributes,
+            elementNodeType = clickedElement.elementType,
+            elementNodeId = clickedElementModel.id,
             bottomContainerElement = $('#' + ctwl.BOTTOM_CONTENT_CONTAINER),
             tabConfig = {};
 
         switch (elementNodeType) {
             case ctwc.GRAPH_ELEMENT_NETWORK:
                 var networkFQN = clickedElement.nodeDetails.name,
-                    networkUUID = ctwu.getUUIDByName(networkFQN);
+                    networkUUID = nmwu.getUUIDByName(networkFQN);
 
-                clickedElement = {
-                    fqName: networkFQN,
-                    uuid: networkUUID,
-                    type: elementNodeType
-                };
+                if (!ctwu.isServiceVN(networkFQN)) {
+                    clickedElement = {
+                        fqName: networkFQN,
+                        uuid: networkUUID,
+                        type: elementNodeType
+                    };
 
-                layoutHandler.setURLHashParams({ clickedElement: clickedElement }, { merge: true, triggerHashChange: false});
+                    layoutHandler.setURLHashParams({clickedElement: clickedElement}, {
+                        merge: true,
+                        triggerHashChange: false
+                    });
 
-                highlightCurrentNodeElement(elementNodeId);
-                tabConfig = ctwgrc.getTabsViewConfig(elementNodeType, clickedElement);
-                cowu.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
+                    highlightCurrentNodeElement(elementNodeId);
+
+                    if ($('g[model-id="' + elementNodeId + '"]').hasClassSVG('ZoomedElement')) {
+                        highlightNetwork4ZoomedElement(connectedSelectorId)
+                    }
+
+                    tabConfig = ctwgrc.getTabsViewConfig(elementNodeType, clickedElement);
+                    self.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
+                }
 
                 break;
 
@@ -529,74 +839,91 @@ define([
                     type: elementNodeType
                 };
 
-                layoutHandler.setURLHashParams({ clickedElement: clickedElement }, { merge: true, triggerHashChange: false});
+                layoutHandler.setURLHashParams({clickedElement: clickedElement}, {
+                    merge: true,
+                    triggerHashChange: false
+                });
 
                 highlightCurrentNodeElement(elementNodeId);
                 tabConfig = ctwgrc.getTabsViewConfig(elementNodeType, clickedElement);
-                cowu.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
+                self.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
 
                 break;
 
             case ctwc.GRAPH_ELEMENT_CONNECTED_NETWORK:
-                var sourceElement = clickedElement.linkDetails.dst,
+                var connectedGraphView = $(connectedSelectorId).data('graphView'),
+                    connectedGraphModel = connectedGraphView.model,
+                    sourceNode = connectedGraphModel.getCell(clickedElement.source),
+                    targetNode = connectedGraphModel.getCell(clickedElement.target),
+                    sourceType = sourceNode.attributes.elementType,
+                    targetType = targetNode.attributes.elementType,
+                    sourceElement = clickedElement.linkDetails.dst,
                     targetElement = clickedElement.linkDetails.src;
 
-                clickedElement = {
-                    sourceElement: sourceElement,
-                    targetElement: targetElement,
-                    linkDetails: clickedElement.linkDetails
-                };
+                if (!(sourceType === ctwc.TYPE_VIRTUAL_NETWORK && targetType === ctwc.TYPE_VIRTUAL_MACHINE)) {
+                    clickedElement = {
+                        sourceElement: sourceElement,
+                        targetElement: targetElement,
+                        linkDetails: clickedElement.linkDetails
+                    };
 
-                highlightCurrentLinkElement(elementNodeId);
-                tabConfig = ctwgrc.getTabsViewConfig(elementNodeType, clickedElement);
-                cowu.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
+                    highlightCurrentLinkElement(elementNodeId);
+                    tabConfig = ctwgrc.getTabsViewConfig(elementNodeType, clickedElement);
+                    self.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
+                }
 
                 break;
+        }
+        ;
+    };
+
+    function getCgPointerClick(self, connectedSelectorId) {
+        return function (cellView, evt, x, y) {
+            var clickedElement = cellView.model.attributes;
+
+            setTimeout(function () {
+                $('.popover').remove();
+            }, cowc.TOOLTIP_DELAY);
+
+            showClickedElement(self, cellView.model, connectedSelectorId);
+
         };
     };
 
-    var highlightConnectedClickedElement = function(clickedElement, connectedGraphView) {
-        var elementNodeType = clickedElement.type,
-            elementMap = connectedGraphView.model.elementMap;
-
-        switch (elementNodeType) {
-            case ctwc.GRAPH_ELEMENT_NETWORK:
-                var networkFQN = clickedElement.fqName;
-                highlightCurrentNodeElement(elementMap.node[networkFQN]);
-
-                break;
-
-            case ctwc.GRAPH_ELEMENT_INSTANCE:
-                var instanceUUID = clickedElement.uuid;
-                highlightCurrentNodeElement(elementMap.node[instanceUUID]);
-
-                break;
-        };
-    };
-
-    var cgPointerDblClick = function(cellView, evt, x, y) {
+    function cgPointerDblClick(cellView, evt, x, y) {
         var dblClickedElement = cellView.model.attributes,
-            elementNodeType= dblClickedElement.elementType,
+            elementNodeType = dblClickedElement.elementType,
             elementNodeId = cellView.model.id;
 
+        setTimeout(function () {
+            $('.popover').remove();
+        }, cowc.TOOLTIP_DELAY);
+
         switch (elementNodeType) {
             case ctwc.GRAPH_ELEMENT_NETWORK:
-                loadFeature({
-                    p: 'mon_networking_networks',
-                    q: {
-                        focusedElement: {
-                            fqName: dblClickedElement.nodeDetails['name'],
-                            type: elementNodeType
-                        },
-                        view: 'details',
-                        type: 'network'
-                    }
-                });
-                $('g.VirtualNetwork').popover('hide');
+                var networkFQN = dblClickedElement.nodeDetails['name'];
+
+                if (!ctwu.isServiceVN(networkFQN)) {
+                    loadFeature({
+                        p: 'mon_networking_networks',
+                        q: {
+                            focusedElement: {
+                                fqName: networkFQN,
+                                type: elementNodeType
+                            },
+                            view: 'details',
+                            type: 'network'
+                        }
+                    });
+                    $('g.VirtualNetwork').popover('hide');
+                }
                 break;
 
             case ctwc.GRAPH_ELEMENT_INSTANCE:
-                var srcVN = dblClickedElement.nodeDetails.srcVNDetails.name;
+                var srcVN = dblClickedElement.nodeDetails.srcVNDetails.name,
+                    vmUVE = dblClickedElement.nodeDetails.uve,
+                    vmName = contrail.checkIfExist(vmUVE) ? vmUVE['UveVirtualMachineAgent']['vm_name'] : null;
+
                 loadFeature({
                     p: 'mon_networking_instances',
                     q: {
@@ -605,7 +932,8 @@ define([
                         focusedElement: {
                             fqName: srcVN,
                             uuid: dblClickedElement.nodeDetails['fqName'],
-                            type: ctwc.GRAPH_ELEMENT_NETWORK
+                            vmName: vmName,
+                            type: ctwc.GRAPH_ELEMENT_INSTANCE
                         }
                     }
                 });
@@ -615,9 +943,9 @@ define([
         }
     };
 
-    var getCgBlankDblClick = function(connectedSelectorId, graphConfig) {
+    function getCgBlankDblClick(self, connectedSelectorId, graphConfig) {
 
-        return function() {
+        return function () {
             var currentHashParams = layoutHandler.getURLHashParams(),
                 focusedElementType = graphConfig.focusedElement.type,
                 bottomContainerElement = $('#' + ctwl.BOTTOM_CONTENT_CONTAINER),
@@ -625,46 +953,46 @@ define([
 
             switch (focusedElementType) {
                 case ctwc.GRAPH_ELEMENT_PROJECT:
-                    if (contrail.checkIfExist(currentHashParams.clickedElement)) {
-                        removeFaint4AllElements();
-                        removeHighlight4AllElements();
+                    removeFaint4AllElements();
+                    removeHighlight4AllElements();
 
+                    if (contrail.checkIfExist(currentHashParams.clickedElement)) {
                         var projectFQN = graphConfig.focusedElement.name.fqName,
-                            projectUUID = ctwu.getUUIDByName(projectFQN);
+                            projectUUID = nmwu.getUUIDByName(projectFQN);
 
                         tabConfig = ctwgrc.getTabsViewConfig(focusedElementType, {
                             fqName: projectFQN,
                             uuid: projectUUID
                         });
 
-                        ctwgrc.setProjectURLHashParams(null, projectFQN, false);
+                        ctwu.setProjectURLHashParams(null, projectFQN, false);
                     }
 
                     break;
 
                 case ctwc.GRAPH_ELEMENT_NETWORK:
-                    var networkFQN = graphConfig.focusedElement.name.fqName;
+                    var networkFQN = decodeURIComponent(graphConfig.focusedElement.name.fqName);
 
                     if (contrail.checkIfExist(currentHashParams.clickedElement)) {
-                        var networkUUID = ctwu.getUUIDByName(networkFQN);
+                        var networkUUID = nmwu.getUUIDByName(networkFQN);
 
                         tabConfig = ctwgrc.getTabsViewConfig(focusedElementType, {
                             fqName: networkFQN,
                             uuid: networkUUID
                         });
 
-                        highlightNetwork4ZoomedElement(connectedSelectorId, graphConfig);
-                        ctwgrc.setNetworkURLHashParams(null, networkFQN, false);
+                        highlightNetwork4ZoomedElement(connectedSelectorId);
+                        ctwu.setNetworkURLHashParams(null, networkFQN, false);
 
                     } else {
-                        var projectFQN = networkFQN.split(':').splice(0,2).join(':');
-                        ctwgrc.setProjectURLHashParams(null, projectFQN, true);
+                        var projectFQN = networkFQN.split(':').splice(0, 2).join(':');
+                        ctwu.setProjectURLHashParams(null, projectFQN, true);
                     }
 
                     break;
 
                 case ctwc.GRAPH_ELEMENT_INSTANCE:
-                    var networkFQN = graphConfig.focusedElement.name.fqName;
+                    var networkFQN = decodeURIComponent(graphConfig.focusedElement.name.fqName);
 
                     if (contrail.checkIfExist(currentHashParams.clickedElement)) {
                         var instanceUUID = graphConfig.focusedElement.name.instanceUUID;
@@ -674,79 +1002,56 @@ define([
                             uuid: instanceUUID
                         });
 
-                        highlightInstance4ZoomedElement(connectedSelectorId, graphConfig);
-                        ctwgrc.setInstanceURLHashParams(null, networkFQN, instanceUUID, false);
+                        ctwu.setInstanceURLHashParams(null, networkFQN, instanceUUID, false);
                     } else {
-                        ctwgrc.setNetworkURLHashParams(null, networkFQN, true);
+                        ctwu.setNetworkURLHashParams(null, networkFQN, true);
                     }
 
                     break;
-            };
+            }
+            ;
 
             if (!$.isEmptyObject(tabConfig)) {
-                cowu.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
+                self.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
             }
         };
     };
 
-    var highlightElement4ZoomedElement = function(connectedSelectorId, jointObject, graphConfig) {
+    function highlightElement4ZoomedElement(connectedSelectorId, graphConfig) {
         var focusedElementType = graphConfig.focusedElement.type;
 
         if (focusedElementType == ctwc.GRAPH_ELEMENT_NETWORK) {
-            highlightNetwork4ZoomedElement(connectedSelectorId, graphConfig);
-        }
-        else if (focusedElementType == ctwc.GRAPH_ELEMENT_INSTANCE) {
-            highlightInstance4ZoomedElement(connectedSelectorId, graphConfig);
+            highlightNetwork4ZoomedElement(connectedSelectorId);
         }
     };
 
-    var highlightNetwork4ZoomedElement = function(connectedSelectorId, graphConfig) {
-        faintAllElements();
-        highlightSVGElements([$('g.ZoomedElement')]);
+    function highlightNetwork4ZoomedElement(connectedSelectorId) {
+        faintElements([$(connectedSelectorId).find('div.font-element')]);
+        faintSVGElements([$(connectedSelectorId).find('g.element'), $(connectedSelectorId).find('g.link')]);
         highlightElements([$('div.VirtualMachine')]);
-        highlightSVGElements([$('g.VirtualMachine'), $('.VirtualMachineLink')]);
-    };
-
-    var highlightInstance4ZoomedElement = function(connectedSelectorId, graphConfig) {
-        faintAllElements();
-        highlightSVGElements([$('g.ZoomedElement')]);
-
-        var jointObject = $(connectedSelectorId).data('joint-object'),
-            graphElements = jointObject.graph.getElements(),
-            vmFqName = graphConfig.focusedElement.name.instanceUUID;
-
-        $.each(graphElements, function (graphElementKey, graphElementValue) {
-            if (graphElementValue.attributes.type == 'contrail.VirtualMachine' && graphElementValue.attributes.nodeDetails.fqName == vmFqName) {
-                var modelId = graphElementValue.id;
-
-                highlightElements([$('div.font-element[font-element-model-id="' + modelId + '"]')]);
-                highlightSVGElements([$('g[model-id="' + modelId + '"]')]);
-            }
-        });
+        highlightSVGElements([$('g.ZoomedElement'), $('g.VirtualMachine'), $('.VirtualMachineLink')]);
     };
 
     function getConfgPointerClickFn(connectedGraphView) {
         return function (cellView, evt, x, y) {
             var clickedElement = cellView.model.attributes,
-                elementNodeType= clickedElement.elementType,
-                elementMap = connectedGraphView.model.elementMap,
-                jointObject = {
-                    graph: connectedGraphView.model
-                };
+                elementNodeType = clickedElement.elementType;
 
             switch (elementNodeType) {
                 case ctwc.GRAPH_ELEMENT_NETWORK_POLICY:
-                    onClickNetworkPolicy(cellView.model, jointObject, elementMap);
+                    onClickNetworkPolicy(cellView.model, connectedGraphView);
                     break;
-            };
+            }
+            ;
         }
     };
 
-    function onClickNetworkPolicy(elementObj, jointObject, elementMap) {
-        var cellAttributes = elementObj.attributes;
+    function onClickNetworkPolicy(elementObj, connectedGraphView) {
+        var elementMap = connectedGraphView.model.elementMap,
+            cellAttributes = elementObj.attributes;
 
         var policyRules = (contrail.checkIfExist(cellAttributes.nodeDetails.network_policy_entries)) ? cellAttributes.nodeDetails.network_policy_entries.policy_rule : [],
-            highlightedElements = { nodes: [], links: [] };
+            highlightedElements = {nodes: [], links: []};
 
         highlightCurrentNodeElement(cellAttributes.id);
 
@@ -757,15 +1062,15 @@ define([
                 serviceInstanceNodeLength = 0,
                 policyRuleLinkKey = [];
 
-            highlightedElements = { nodes: [], links: [] };
+            highlightedElements = {nodes: [], links: []};
 
             $.each(sourceNode, function (sourceNodeKey, sourceNodeValue) {
-                if (contrail.checkIfExist(sourceNodeValue)) {
+                if (contrail.checkIfExist(sourceNodeValue) && !$.isArray(sourceNodeValue)) {
                     highlightedElements.nodes.push(sourceNodeValue);
                     policyRuleLinkKey.push(sourceNodeValue);
 
                     if (serviceInstanceNode) {
-                        serviceInstanceNodeLength = serviceInstanceNode.length
+                        serviceInstanceNodeLength = serviceInstanceNode.length;
                         $.each(serviceInstanceNode, function (serviceInstanceNodeKey, serviceInstanceNodeValue) {
                             highlightedElements.nodes.push(serviceInstanceNodeValue);
                             policyRuleLinkKey.push(serviceInstanceNodeValue);
@@ -782,7 +1087,7 @@ define([
                 }
             });
             $.each(destinationNode, function (destinationNodeKey, destinationNodeValue) {
-                if (contrail.checkIfExist(destinationNodeValue)) {
+                if (contrail.checkIfExist(destinationNodeValue) && !$.isArray(destinationNodeValue)) {
                     highlightedElements.nodes.push(destinationNodeValue);
                 }
             });
@@ -790,7 +1095,7 @@ define([
             if (elementMap.link[policyRuleLinkKey.join('<->')] || elementMap.link[policyRuleLinkKey.reverse().join('<->')]) {
                 highlightedElements.nodes = $.unique(highlightedElements.nodes);
                 $.each(highlightedElements.nodes, function (nodeKey, nodeValue) {
-                    var nodeElement = jointObject.graph.getCell(elementMap.node[nodeValue]);
+                    var nodeElement = connectedGraphView.model.getCell(elementMap.node[nodeValue]);
                     $('g[model-id="' + nodeElement.id + '"]').removeClassSVG('fainted').addClassSVG('highlighted');
                     $('div[font-element-model-id="' + nodeElement.id + '"]').removeClass('fainted').addClass('highlighted');
 
@@ -798,8 +1103,6 @@ define([
                         highlightElements([$('div.VirtualMachine')]);
                         highlightSVGElements([$('g.VirtualMachine'), $('.VirtualMachineLink')]);
                     }
-
-
                 });
 
                 if (policyRuleValue.action_list.simple_action == 'pass') {
@@ -807,10 +1110,10 @@ define([
                     $.each(highlightedElements.links, function (highlightedElementLinkKey, highlightedElementLinkValue) {
                         if (elementMap.link[highlightedElementLinkValue]) {
                             if (typeof elementMap.link[highlightedElementLinkValue] == 'string') {
-                                highlightLinkElementByName(jointObject, elementMap.link[highlightedElementLinkValue]);
+                                highlightLinkElementByName(connectedGraphView, elementMap.link[highlightedElementLinkValue]);
                             } else {
                                 $.each(elementMap.link[highlightedElementLinkValue], function (linkKey, linkValue) {
-                                    highlightLinkElementByName(jointObject, linkValue)
+                                    highlightLinkElementByName(connectedGraphView, linkValue)
                                 });
                             }
 
@@ -821,7 +1124,7 @@ define([
         });
     };
 
-    var highlightCurrentNodeElement = function(elementNodeId) {
+    function highlightCurrentNodeElement(elementNodeId) {
         if ($('g[model-id="' + elementNodeId + '"]').length != 0 && $('div.font-element[font-element-model-id="' + elementNodeId + '"]').length != 0) {
             faintAllElements();
 
@@ -830,48 +1133,410 @@ define([
         }
     };
 
-    var highlightCurrentLinkElement = function(elementNodeId) {
+    function highlightCurrentLinkElement(elementNodeId) {
         if ($('g[model-id="' + elementNodeId + '"]').length != 0) {
             faintAllElements();
             highlightSVGElements([$('g[model-id="' + elementNodeId + '"]')]);
         }
     };
 
-    var highlightLinkElementByName = function(jointObject, elementId) {
-        var linkElement = jointObject.graph.getCell(elementId);
+    function highlightLinkElementByName(connectedGraphView, elementId) {
+        var linkElement = connectedGraphView.model.getCell(elementId);
         if (linkElement) {
             highlightSVGElements([$('g[model-id="' + linkElement.id + '"]')]);
         }
     };
 
-    var highlightElements = function(elements) {
+    function highlightElements(elements) {
         $.each(elements, function (elementKey, elementValue) {
             $(elementValue).removeClass('fainted').addClass('highlighted');
         });
     };
 
-    var highlightSVGElements = function(elements) {
+    function highlightSVGElements(elements) {
         $.each(elements, function (elementKey, elementValue) {
             $(elementValue).removeClassSVG('fainted').addClassSVG('highlighted');
         });
     };
 
-    var faintAllElements = function() {
+    function faintElements(elements) {
+        $.each(elements, function (elementKey, elementValue) {
+            $(elementValue).removeClass('highlighted').addClass('fainted');
+        });
+    };
+
+    function faintSVGElements(elements) {
+        $.each(elements, function (elementKey, elementValue) {
+            $(elementValue).removeClassSVG('highlighted').addClassSVG('fainted');
+        });
+    };
+
+    function faintAllElements() {
         $('div.font-element').removeClass('highlighted').addClass('fainted');
         $('g.element').removeClassSVG('highlighted').addClassSVG('fainted');
         $('g.link').removeClassSVG('highlighted').addClassSVG('fainted');
     };
 
-    var removeFaint4AllElements  = function() {
+    function removeFaint4AllElements() {
         $('div.font-element').removeClass('fainted');
         $('g.element').removeClassSVG('fainted');
         $('g.link').removeClassSVG('fainted');
     };
 
-    var removeHighlight4AllElements  = function() {
+    function removeHighlight4AllElements() {
         $('div.font-element').removeClass('highlighted');
         $('g.element').removeClassSVG('highlighted');
         $('g.link').removeClassSVG('highlighted');
+    };
+
+    function createNodes4ConfigData(configData, collections) {
+        var networkPolicys = configData['network-policys'],
+            securityGroups = configData['security-groups'],
+            networkIPAMS = configData['network-ipams'],
+            name, i;
+
+        if (networkPolicys != null && networkPolicys.length > 0) {
+            var font = {
+                iconClass: 'icon-contrail-network-policy'
+            };
+            collections.networkPolicys = {name: 'Network Policies', node_type: 'collection-element', nodes: []};
+            for (i = 0; networkPolicys != null && i < networkPolicys.length; i++) {
+                name = networkPolicys[i]['fq_name'].join(':');
+                collections.networkPolicys.nodes.push({
+                    name: name,
+                    node_type: 'network-policy',
+                    elementType: 'network-policy',
+                    nodeDetails: networkPolicys[i],
+                    font: font
+                });
+            }
+        }
+
+        if (securityGroups != null && securityGroups.length > 0) {
+            var font = {
+                iconClass: 'icon-contrail-security-group'
+            };
+            collections.securityGroups = {name: 'Security Groups', node_type: 'collection-element', nodes: []};
+            for (i = 0; securityGroups != null && i < securityGroups.length; i++) {
+                name = securityGroups[i]['fq_name'].join(':');
+                collections.securityGroups.nodes.push({
+                    name: name,
+                    node_type: 'security-group',
+                    elementType: 'security-group',
+                    nodeDetails: securityGroups[i],
+                    font: font
+                });
+            }
+        }
+
+        if (networkIPAMS != null && networkIPAMS.length > 0) {
+            var font = {
+                iconClass: 'icon-contrail-network-ipam'
+            };
+            collections.networkIPAMS = {name: 'Network IPAMS', node_type: 'collection-element', nodes: []};
+            for (i = 0; networkIPAMS != null && i < networkIPAMS.length; i++) {
+                name = networkIPAMS[i]['fq_name'].join(':');
+                collections.networkIPAMS.nodes.push({
+                    name: name,
+                    node_type: 'network-ipam',
+                    elementType: 'network-ipam',
+                    nodeDetails: networkIPAMS[i],
+                    font: font
+                });
+            }
+        }
+    }
+
+    function createNodeElements(nodes, elements, elementMap, config) {
+        var newElement, nodeName;
+        for (var i = 0; i < nodes.length; i++) {
+            newElement = createNodeElement(nodes[i], config);
+            nodeName = nodes[i]['name'];
+            elements.push(newElement);
+            elementMap.node[nodeName] = newElement.id;
+        }
+    }
+
+    function createNodeElement(node, config) {
+        var nodeFQN = node['name'],
+            nodeType = node['node_type'],
+            width = (config != null && config.width != null) ? config.width : 35,
+            height = (config != null && config.height != null) ? config.height : 35,
+            element, options,
+            nodeNameList, nodeName;
+
+        nodeNameList = nodeFQN.split(":");
+        nodeName = (nodeNameList.length > 2) ? nodeNameList[2] : nodeFQN;
+        options = {
+            attrs: {
+                text: {
+                    text: contrail.truncateText(nodeName, 10)
+                }
+            },
+            size: {
+                width: width,
+                height: height
+            },
+            nodeDetails: node,
+            font: {
+                iconClass: 'icon-contrail-' + nodeType
+            },
+            elementType: nodeType
+        };
+        element = new ContrailElement(nodeType, options);
+        return element;
+    }
+
+    function createCollectionElements(collections, elements, elementMap) {
+        var elementDimension = {
+            width: 37,
+            height: 37,
+            marginLeft: 17,
+            marginRight: 17,
+            marginTop: 10,
+            marginBottom: 0,
+            firstRowMarginTop: 10
+        };
+        var collectionPositionX = 10,
+            collectionPositionY = 20,
+            width = 0,
+            height = 0;
+        $.each(collections, function (collectionKey, collectionValue) {
+            var nodeRows = 1;
+            collectionPositionX = 0,
+                collectionPositionY += height,
+                width = (elementDimension.width + elementDimension.marginLeft + elementDimension.marginRight) * collectionValue.nodes.length;
+            height = nodeRows * (elementDimension.width + elementDimension.marginTop + elementDimension.marginBottom) + elementDimension.marginTop + elementDimension.marginBottom + elementDimension.firstRowMarginTop;
+            var options = {
+                position: {
+                    x: collectionPositionX,
+                    y: collectionPositionY
+                },
+                attrs: {
+                    rect: {
+                        width: width,
+                        height: height
+                    },
+                    text: {
+                        text: collectionValue.name
+                    }
+                }
+            };
+
+            var collectionElement = new ContrailElement(collectionValue.node_type, options);
+            elements.push(collectionElement);
+            elementMap.node[collectionValue.name] = collectionElement.id;
+
+            var collectionNodePositionX = 0,
+                collectionNodePositionY = 0;
+
+            $.each(collectionValue.nodes, function (collectionNodeKey, collectionNodeValue) {
+                collectionNodePositionX = collectionPositionX + (collectionNodeKey % 2) * (elementDimension.width + elementDimension.marginLeft + elementDimension.marginRight)
+                    + elementDimension.marginLeft;
+                collectionNodePositionY = elementDimension.firstRowMarginTop + (collectionPositionY + height * parseInt(collectionNodeKey / 2));
+
+                var nodeName = collectionNodeValue['name'],
+                    nodeType = collectionNodeValue['node_type'],
+                    imageName = grUtils.getImageName(collectionNodeValue),
+                    imageLink = '/img/icons/' + imageName,
+                    options = {
+                        position: {
+                            x: collectionNodePositionX,
+                            y: collectionNodePositionY
+                        },
+                        attrs: {
+                            image: {
+                                'xlink:href': imageLink,
+                                width: elementDimension.width,
+                                height: elementDimension.height
+                            },
+                            text: {
+                                text: contrail.truncateText(nodeName.split(":")[2], 15)
+                            }
+                        },
+                        nodeDetails: collectionNodeValue.nodeDetails,
+                        elementType: collectionNodeValue.elementType,
+                        font: collectionNodeValue.font
+                    },
+                    element = new ContrailElement(nodeType, options);
+
+                collectionElement.embed(element);
+                elements.push(element);
+                elementMap.node[nodeName] = element.id;
+            });
+
+            collectionPositionY = collectionNodePositionY;
+        });
+
+        return collectionPositionY + elementDimension.height + elementDimension.firstRowMarginTop;
+    }
+
+    function createLinkElements(links, elements, elementMap) {
+        var link, linkedElements = [];
+        for (var i = 0; i < links.length; i++) {
+            var sInstances = links[i] ['service_inst'],
+                dir = links[i]['dir'],
+                source = {}, target = {};
+
+            if (sInstances == null || sInstances.length == 0) {
+                source = {
+                    id: elementMap.node[links[i]['src']],
+                    name: links[i]['src']
+                };
+                target = {
+                    id: elementMap.node[links[i]['dst']],
+                    name: links[i]['dst']
+                };
+
+                link = createLinkElement(source, target, links[i], elements, elementMap);
+                linkedElements.push(link);
+            } else {
+                var linkElements = [],
+                    linkElementKeys = [],
+                    linkElementKeyString = '',
+                    linkElementKeyStringBi = '';
+                for (var j = 0; j < sInstances.length; j++) {
+                    if (j == 0) {
+                        source = {
+                            id: elementMap.node[links[i]['src']],
+                            name: links[i]['src']
+                        };
+                    } else {
+                        source = {
+                            id: elementMap.node[sInstances[j - 1]],
+                            name: sInstances[j - 1]
+                        };
+                    }
+                    target = {
+                        id: elementMap.node[sInstances[j]],
+                        name: sInstances[j]
+                    };
+                    linkElements.push({
+                        source: source,
+                        target: target
+                    });
+                    linkElementKeys.push(source.name);
+                }
+
+                source = {
+                    id: elementMap.node[sInstances[j - 1]],
+                    name: sInstances[j - 1]
+                };
+
+                target = {
+                    id: elementMap.node[links[i]['dst']],
+                    name: links[i]['dst']
+                };
+                linkElements.push({
+                    source: source,
+                    target: target
+                });
+                linkElementKeys.push(source.name);
+                linkElementKeys.push(target.name);
+
+                linkElementKeyString = linkElementKeys.join('<->');
+                elementMap.link[linkElementKeyString] = [];
+
+                if (dir == 'bi') {
+                    linkElementKeyStringBi = linkElementKeys.reverse().join('<->');
+                    elementMap.link[linkElementKeyStringBi] = [];
+                }
+
+                $.each(linkElements, function (linkElementKey, linkElementValue) {
+                    link = createLinkElement(linkElementValue.source, linkElementValue.target, links[i], elements, elementMap);
+                    linkedElements.push(link);
+
+                    elementMap.link[linkElementKeyString].push(link.id);
+                    if (dir == 'bi') {
+                        elementMap.link[linkElementKeyStringBi].push(link.id);
+                    }
+                });
+            }
+        }
+        elementMap['linkedElements'] = linkedElements;
+    };
+
+    function createLinkElement(source, target, linkDetails, elements, elementMap) {
+        var direction = linkDetails.dir,
+            linkConfig = {
+                source: {id: source.id},
+                target: {id: target.id},
+                linkDetails: linkDetails,
+                elementType: 'connected-network',
+                attrs: {}
+            };
+
+        if (direction == 'bi') {
+            linkConfig.attrs = {
+                '.marker-source': {fill: '#333', d: 'M 6 0 L 0 3 L 6 6 z'},
+                '.marker-target': {fill: '#333', d: 'M 6 0 L 0 3 L 6 6 z'}
+            };
+
+        } else if (direction == 'uni') {
+
+            linkConfig.attrs = {
+                '.marker-source': {fill: '#333', d: 'M 6 0 L 0 3 L 6 6 z'},
+                '.marker-target': {fill: '#e80015', stroke: '#e80015', d: 'M 6 0 L 0 3 L 6 6 z'},
+                '.connection': {stroke: '#e80015', 'stroke-width': 1, 'stroke-dasharray': '4 4'}
+            };
+        }
+
+        var link = new ContrailElement('link', {linkConfig: linkConfig});
+        elements.push(link);
+        elementMap.link[source.name + '<->' + target.name] = link.id;
+        if (link.attributes.linkDetails.dir == 'bi') {
+            elementMap.link[target.name + '<->' + source.name] = link.id;
+        }
+
+        return link;
+    }
+
+    function createInterfaceLink(links, elements, elementMap) {
+        var link, linkedElements = [];
+        for (var i = 0; i < links.length; i++) {
+            var sInstances = links[i] ['service_inst'],
+                source = {}, target = {},
+                isHealthCheckActive = links[i]['more_attributes']['is_health_check_active'];
+
+            if (sInstances == null || sInstances.length == 0) {
+                source = {
+                    id: elementMap.node[links[i]['src']],
+                    name: links[i]['src']
+                };
+                target = {
+                    id: elementMap.node[links[i]['dst']],
+                    name: links[i]['dst']
+                };
+
+                var options = {
+                    linkConfig: {
+                        source: {id: source.id},
+                        target: {id: target.id},
+                        smooth: false,
+                        connector: {name: 'normal'},
+                        attrs: {
+                            '.connection': {
+                                'stroke': (isHealthCheckActive) ? '#333' : '#e80015',
+                                'stroke-width': 2,
+                                'stroke-dasharray': '4 4'
+                            },
+                            '.connection-wrap': {
+                                'stroke': '#333'
+                            }
+                        },
+                        linkDetails: links[i],
+                        elementType: 'connected-network'
+                    }
+                };
+
+                link = new ContrailElement('link', options);
+                elements.push(link);
+                elementMap.link[source.name + ':-:' + target.name] = link.id;
+
+                linkedElements.push(link);
+            }
+        }
+        elementMap['linkedElements'] = linkedElements;
     };
 
     return NetworkingGraphView;

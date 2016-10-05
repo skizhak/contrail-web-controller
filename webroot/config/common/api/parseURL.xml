@@ -33,6 +33,12 @@
         <callback>projectconfigapi.listProjects</callback>
     </item>
     <item>
+        <url>/api/tenants/config/all-projects</url>
+        <method>get</method>
+        <feature>projectconfig</feature>
+        <callback>projectconfigapi.listAllProjects</callback>
+    </item>
+    <item>
         <url>/api/tenants/config/projects/:domain</url>
         <method>get</method>
         <feature>projectconfig</feature>
@@ -51,6 +57,12 @@
         <callback>projectconfigapi.listDomains</callback>
     </item>
     <item>
+        <url>/api/tenants/config/all-domains</url>
+        <method>get</method>
+        <feature>projectconfig</feature>
+        <callback>projectconfigapi.listAllDomains</callback>
+    </item>
+    <item>
         <url>/api/tenants/config/delete</url>
         <method>post</method>
         <feature>configUtil</feature>
@@ -63,10 +75,46 @@
         <callback>configUtilapi.getConfigDetails</callback>
     </item>
     <item>
+        <url>/api/tenants/config/get-config-list</url>
+        <method>post</method>
+        <feature>configUtil</feature>
+        <callback>configUtilapi.getConfigList</callback>
+    </item>
+    <item>
+        <url>/api/tenants/config/get-config-objects</url>
+        <method>post</method>
+        <feature>configUtil</feature>
+        <callback>configUtilapi.getConfigObjects</callback>
+    </item>
+    <item>
+        <url>/api/tenants/config/create-config-object</url>
+        <method>post</method>
+        <feature>configUtil</feature>
+        <callback>configUtilapi.createConfigObject</callback>
+    </item>
+    <item>
+        <url>/api/tenants/config/update-config-object</url>
+        <method>post</method>
+        <feature>configUtil</feature>
+        <callback>configUtilapi.updateConfigObject</callback>
+    </item>
+    <item>
         <url>/api/tenants/config/delete-config-data</url>
         <method>delete</method>
         <feature>configUtil</feature>
         <callback>configUtilapi.deleteConfigObj</callback>
+    </item>
+    <item>
+        <url>/api/tenants/config/get-config-uuid-list</url>
+        <method>get</method>
+        <feature>configUtil</feature>
+        <callback>configUtilapi.getConfigUUIDList</callback>
+    </item>
+    <item>
+        <url>/api/tenants/config/get-config-data-paged</url>
+        <method>post</method>
+        <feature>configUtil</feature>
+        <callback>configUtilapi.getConfigPaginatedResponse</callback>
     </item>
 </urlLists>
 

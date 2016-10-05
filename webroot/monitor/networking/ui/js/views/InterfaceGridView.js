@@ -4,72 +4,76 @@
 
 define([
     'underscore',
-    'backbone'
-], function (_, Backbone) {
-    var InterfaceGridView = Backbone.View.extend({
+    'contrail-view'
+], function (_, ContrailView) {
+    var InterfaceGridView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
-            var that = this,
+            var self = this,
                 viewConfig = this.attributes.viewConfig,
-                modelMap = this.modelMap,
-                networkFQN = viewConfig['networkFQN'],
-                instanceUUID = viewConfig['instanceUUID'],
-                interfacesAjaxConfig, viewModel, interfaceNames;
+                modelMap = this.modelMap, parentType = viewConfig['parentType'],
+                domain = viewConfig['domain'], projectFQN = viewConfig['projectFQN'],
+                networkFQN = viewConfig['networkFQN'], instanceUUID = viewConfig['instanceUUID'],
+                elementId = viewConfig['elementId'], interfaceList = [],
+                interfacesAjaxConfig, viewModel, ucid;
 
-            var ucid = ctwc.get(ctwc.UCID_INSTANCE_INTERFACE_LIST, networkFQN, instanceUUID);
-
-            if (modelMap != null && modelMap[viewConfig['modelKey']] != null) {
-                viewModel = modelMap[viewConfig['modelKey']]
+            if (parentType == ctwc.TYPE_VIRTUAL_MACHINE && contrail.checkIfExist(modelMap) && modelMap[viewConfig['modelKey']] != null) {
+                ucid = ctwc.get(ctwc.UCID_INSTANCE_INTERFACE_LIST, networkFQN, instanceUUID);
+                //TODO: Create a model from data coming from ModelMap
+                viewModel = modelMap[viewConfig['modelKey']];
                 if (!(viewModel.isRequestInProgress())) {
-                    interfacesAjaxConfig = getInterfacesAjaxConfig(viewModel.attributes);
-                    cowu.renderView4Config(that.$el, this.model, getInterfaceGridViewConfig(interfacesAjaxConfig, ucid));
+                    interfaceList = contrail.checkIfExist(viewModel.attributes) ? viewModel.attributes['value']['UveVirtualMachineAgent']['interface_list'] : [];
+                    interfacesAjaxConfig = getInterfacesAjaxConfig(parentType, {interfaceList: interfaceList});
+                    self.renderView4Config(self.$el, this.model, getInterfaceGridViewConfig(interfacesAjaxConfig, ucid, elementId));
                 }
 
                 viewModel.onAllRequestsComplete.subscribe(function () {
-                    interfacesAjaxConfig = getInterfacesAjaxConfig(viewModel.attributes);
-                    cowu.renderView4Config(that.$el, this.model, getInterfaceGridViewConfig(interfacesAjaxConfig, ucid));
+                    interfaceList = contrail.checkIfExist(viewModel.attributes) ? viewModel.attributes['value']['UveVirtualMachineAgent']['interface_list'] : [];
+                    interfacesAjaxConfig = getInterfacesAjaxConfig(parentType, {interfaceList: interfaceList});
+                    self.renderView4Config(self.$el, this.model, getInterfaceGridViewConfig(interfacesAjaxConfig, ucid, elementId));
                 });
+            } else if (parentType == ctwc.TYPE_VIRTUAL_NETWORK) {
+                ucid = ctwc.get(ctwc.UCID_NETWORK_INTERFACE_LIST, networkFQN);
+                interfacesAjaxConfig = getInterfacesAjaxConfig(parentType, {domain: domain, projectFQN: projectFQN, networkFQN: networkFQN});
+                self.renderView4Config(self.$el, this.model, getInterfaceGridViewConfig(interfacesAjaxConfig, ucid, elementId));
+            } else if (parentType == ctwc.TYPE_PROJECT) {
+                ucid = ctwc.get(ctwc.UCID_PROJECT_INTERFACE_LIST, projectFQN);
+                interfacesAjaxConfig = getInterfacesAjaxConfig(parentType, {domain: domain, projectFQN: projectFQN, networkFQN: networkFQN});
+                self.renderView4Config(self.$el, this.model, getInterfaceGridViewConfig(interfacesAjaxConfig, ucid, elementId));
             }
         }
     });
 
-    function getInterfacesAjaxConfig(responseJSON) {
+    function getInterfacesAjaxConfig(parentType, options) {
         var ajaxConfig,
-            interfaceList = responseJSON['value']['UveVirtualMachineAgent']['interface_list'];
+            interfaceList = contrail.checkIfExist(options['interfaceList']) ? options['interfaceList'] : [];
 
         ajaxConfig = {
             url: ctwc.URL_VM_INTERFACES,
             type: 'POST',
             data: JSON.stringify({
-                kfilt: interfaceList.join(',')
+                parentType: parentType,
+                domain: options['domain'],
+                projectFQN: options['projectFQN'],
+                networkFQN: options['networkFQN'],
+                kfilt: interfaceList.join(','),
+                cfilt: ctwc.FILTERS_INSTANCE_LIST_INTERFACES.join(',')
             })
         };
 
         return ajaxConfig;
     };
 
-    function getInterfaceGridViewConfig(interfacesAjaxConfig, ucid) {
+    function getInterfaceGridViewConfig(interfacesAjaxConfig, ucid, elementId) {
         return {
-            elementId: cowu.formatElementId([ctwl.MONITOR_INTERFACE_LIST_VIEW_ID]),
-            view: "SectionView",
+            elementId: elementId,
+            title: ctwl.TITLE_INTERFACES,
+            view: "GridView",
             viewConfig: {
-                rows: [
-                    {
-                        columns: [
-                            {
-                                elementId: ctwl.INSTANCE_INTERFACE_GRID_ID,
-                                title: ctwl.TITLE_INTERFACES,
-                                view: "GridView",
-                                viewConfig: {
-                                    elementConfig: getInstanceInterfacesConfig(interfacesAjaxConfig, ucid)
-                                }
-                            }
-                        ]
-                    }
-                ]
+                elementConfig: getInstanceInterfacesConfig(interfacesAjaxConfig, ucid)
             }
-        }
+        };
     };
 
     function getInstanceInterfacesConfig(interfacesAjaxConfig, ucid) {
@@ -91,15 +95,27 @@ define([
                     checkboxSelectable: false,
                     detail: {
                         template: cowu.generateDetailTemplateHTML(getInterfaceDetailsTemplateConfig(), cowc.APP_CONTRAIL_CONTROLLER)
-                    }
+                    },
+                    fixedRowHeight: 30
                 },
                 dataSource: {
                     remote: {
                         ajaxConfig: interfacesAjaxConfig,
                         dataParser: ctwp.interfaceDataParser
                     },
+                    vlRemoteConfig: {
+                        vlRemoteList: ctwgc.getInterfaceStatsLazyRemoteConfig()
+                    },
                     cacheConfig : {
                         ucid: ucid
+                    }
+                },
+                statusMessages: {
+                    loading: {
+                        text: 'Loading Interfaces..'
+                    },
+                    empty: {
+                        text: 'No Interfaces Found.'
                     }
                 }
             },
@@ -123,7 +139,7 @@ define([
                         templateGeneratorConfig: {
                             columns: [
                                 {
-                                    class: 'span6',
+                                    class: 'col-xs-6',
                                     rows: [
                                         {
                                             title: ctwl.TITLE_INTERFACE_DETAILS,
@@ -146,10 +162,99 @@ define([
                                                     templateGenerator: 'TextGenerator'
                                                 },
                                                 {
-                                                    key: 'active',
+                                                    key: 'virtual_network',
                                                     templateGenerator: 'TextGenerator'
+                                                },
+                                                {
+                                                    key: 'vm_name',
+                                                    templateGenerator: 'TextGenerator'
+                                                },
+                                                {
+                                                    key: 'active',
+                                                    templateGenerator: 'TextGenerator',
+                                                    templateGeneratorConfig: {
+                                                        formatter: 'status-boolean'
+                                                    }
+                                                },
+                                                {
+                                                    key: 'is_health_check_active',
+                                                    templateGenerator: 'TextGenerator',
+                                                    templateGeneratorConfig: {
+                                                        formatter: 'status-boolean'
+                                                    }
+                                                },
+                                                {
+                                                    key: 'health_check_instance_list',
+                                                    templateGenerator: 'BlockGridTemplateGenerator',
+                                                    templateGeneratorConfig: {
+                                                        dataColumn: [
+                                                            {
+                                                                key: 'uuid',
+                                                                templateGenerator: 'TextGenerator',
+                                                                templateGeneratorConfig: {
+                                                                    width: 100
+                                                                }
+                                                            },
+                                                            {
+                                                                key: 'name',
+                                                                templateGenerator: 'TextGenerator',
+                                                                templateGeneratorConfig: {
+                                                                    width: 90
+                                                                }
+                                                            },
+                                                            {
+                                                                key: 'status',
+                                                                templateGenerator: 'TextGenerator',
+                                                                templateGeneratorConfig: {
+                                                                    width: 45
+                                                                }
+                                                            }
+                                                        ]
+                                                    }
                                                 }
                                             ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    class: 'col-xs-6',
+                                    rows: [
+                                        {
+                                            title: ctwl.TITLE_TRAFFIC_DETAILS,
+                                            templateGenerator: 'BlockListTemplateGenerator',
+                                            templateGeneratorConfig: [
+                                                {
+                                                    key: 'throughput',
+                                                    templateGenerator: 'TextGenerator',
+                                                    templateGeneratorConfig: {
+                                                        formatter: 'throughput'
+                                                    }
+                                                },
+
+                                            ]
+                                        },
+                                        {
+                                            title: ctwl.TITLE_FLOATING_IPS,
+                                            key: 'floating_ips',
+                                            templateGenerator: 'BlockGridTemplateGenerator',
+                                            templateGeneratorConfig: {
+                                                dataColumn: [
+                                                    {
+                                                        key: 'ip_address',
+                                                        templateGenerator: 'TextGenerator',
+                                                        templateGeneratorConfig: {
+                                                            width: 80
+                                                        }
+                                                    },
+                                                    {
+                                                        key: 'virtual_network',
+                                                        templateGenerator: 'TextGenerator',
+                                                        templateGeneratorConfig: {
+                                                            width: 350
+                                                        }
+                                                    }
+                                                ]
+                                            }
                                         }
                                     ]
                                 }

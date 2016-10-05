@@ -13,7 +13,7 @@ var configUtil       = module.exports;
 // '/src/serverroot/common/rest.api');
 var async = require('async');
 
-var portsConfig = require('../../ports/api/portsconfig.api'),
+var portsConfig = require('../../networking/port/api/portsconfig.api'),
     logutils = require(process.mainModule.exports["corePath"] +
                        '/src/serverroot/utils/log.utils'),
     appErrors = require(process.mainModule.exports["corePath"] +
@@ -22,12 +22,35 @@ var portsConfig = require('../../ports/api/portsconfig.api'),
                           '/src/serverroot/utils/common.utils'),
     configApiServer = require(process.mainModule.exports["corePath"] +
                               '/src/serverroot/common/configServer.api');
+var vnConfig = require('../../networking/networks/api/vnconfig.api');
+var nwIpam = require('../../networking/ipam/api/ipamconfig.api');
+var logicalRtr =
+    require('../../networking/logicalrouter/api/logicalrouterconfig.api');
+var vdns = require('../../dns/servers/api/virtualdnsserversconfig.api');
+var policyConfig =
+    require('../../networking/policy/api/policyconfig.api');
+var routingPolicyConfig =
+    require('../../networking/routingpolicy/api/routingpolicyconfig.api');
+var svcInst =
+    require('../../services/instances/api/serviceinstanceconfig.api');
 
 var errorData = [];
 var configCBDelete = 
 {
-    'virtual-machine-interface': portsConfig.deletePortsCB
+    'virtual-machine-interface': portsConfig.deletePortsCB,
+    'logical-router': logicalRtr.deleteLogicalRouterAsync,
+    'virtual-DNS': vdns.deleteVirtualDNSCallback,
+    'network-policy': policyConfig.deletePolicyAsync,
+    'routing-policy': routingPolicyConfig.deleteRoutingPolicyAsync,
+    'virtual-network': vnConfig.deleteVirtualNetworkAsync,
+    'service-instance': svcInst.deleteServiceInstanceCB,
+    'service-analyzer':svcInst.deleteAnalyzerCB
 }
+
+var getConfigPageRespCB = {
+    'virtual-network': vnConfig.getVirtualNetworkCb,
+    'network-ipam': nwIpam.getIpamCb
+};
 
 /**
  * Bail out if called directly as "nodejs projectconfig.api.js"
@@ -65,6 +88,7 @@ function deleteMultiObjectCB (postBody, request, appData, callback)
         var type = postBody[i].type;
         var deleteUUIDs = postBody[i].deleteIDs;
         var deleteUUIDsLength = deleteUUIDs.length;
+        var userData = postBody[i].userData;
         dataObj[i] = [];
         for (var j = 0; j < deleteUUIDsLength ; j++) {
             dataObj[i][j] = {};
@@ -72,6 +96,7 @@ function deleteMultiObjectCB (postBody, request, appData, callback)
             dataObj[i][j]['type'] = postBody[i].type;
             dataObj[i][j]['request'] = request;
             dataObj[i][j]['appData'] = appData;
+            dataObj[i][j]['userData'] = userData;
         }
     }
     if (dataObj.length <= 0) {
@@ -97,6 +122,7 @@ function deleteByType(dataObj, callback)
 {
     var delCB = getConfigDeleteCallbackByType(dataObj[0]["type"]);
     if (null == delCB || "" == delCB) {
+        console.log("Didnt find the handler");
         delCB = defaultConfigDeleteHandler;
     }
     async.mapLimit(dataObj, 100, delCB,
@@ -161,38 +187,184 @@ function getConfigDeleteCallbackByType (type)
 function getConfigDetailsAsync (dataObj, callback)
 {
     var appData = dataObj['appData'];
-    var url = '/' + dataObj['type'] +'' + '?detail=true';
+    var url = '/' + dataObj['type'];
+    var startDone = false;
+    if (true == dataObj['detail']) {
+        url += '?detail=true';
+        startDone = true;
+    }
     if (null != dataObj['fields']) {
-        url += '&fields=' + dataObj['fields'];
+        if (true == startDone) {
+            url += '&';
+        } else {
+            url += '?';
+        }
+        url += 'fields=' + dataObj['fields'];
+        startDone = true;
     }
-    if (null != dataObj['parent_uuid']) {
-        url += '&parent_uuid=' + dataObj['parent_uuid'];
+    if (null != dataObj['parent_id']) {
+        if (true == startDone) {
+            url += '&';
+        } else {
+            url += '?';
+        }
+        url += 'parent_id=' + dataObj['parent_id'];
+        startDone = true;
+    } else {
+        if ((null != dataObj['parent_fq_name_str']) &&
+            (null != dataObj['parent_type'])) {
+            if (true == startDone) {
+                url += '&';
+            } else {
+                url += '?';
+            }
+            url += 'parent_fq_name_str=' + dataObj['parent_fq_name_str'] +
+                '&parent_type=' + dataObj['parent_type'];
+            startDone = true;
+        }
     }
-    configApiServer.apiGet(url, appData, function(err, data) {
-        callback(err, data);
-    });
+    if (null != dataObj['back_ref_id']) {
+        if (true == startDone) {
+            url += '&';
+        } else {
+            url += '?';
+        }
+        url += 'back_ref_id=' + dataObj['back_ref_id'];
+        startDone = true;
+    }
+    if (null != dataObj['obj_uuids']) {
+        if (true == startDone) {
+            url += '&';
+        } else {
+            url += '?';
+        }
+        url += 'obj_uuids=' + dataObj['obj_uuids'].join(',');
+        startDone = true;
+    }
+    if (null != dataObj['filters']) {
+        if (true == startDone) {
+            url += '&';
+        } else {
+            url += '?';
+        }
+        url += 'filters=' + dataObj['filters'];
+        startDone = true;
+    }
+    if (null != dataObj['fq_name']) {
+        var postData = {
+            'appData': appData,
+            'fqnReq' : {
+                'fq_name': dataObj['fq_name'].split(':'),
+                'type':
+                    dataObj['type'] != null ? dataObj['type'].slice(0, -1) : null}
+        };
+        getUUIDByFQN(postData, function(error, data) {
+            if ( null != error) {
+                var error = new appErrors.RESTServerError('Invalid fqn provided');
+                callback(error, null);
+                return;
+            }
+            var uuid = data.uuid;
+            if (true == startDone) {
+                url += '&';
+            } else {
+                url += '?';
+            }
+            url += 'obj_uuids=' + uuid;
+            configApiServer.apiGet(url, appData, function(err, data) {
+                callback(err, data);
+            });
+        });
+    } else {
+        configApiServer.apiGet(url, appData, function(err, data) {
+            callback(err, data);
+        });
+    }
+
 }
 
 function getConfigDetails (req, res, appData)
 {
-    var dataObjArr = [];
     var postData = req.body;
+    var detail = true;
+    getConfigAsync(postData, detail, appData, function(err, data) {
+        commonUtils.handleJSONResponse(err, res, data);
+    });
+}
+
+function getConfigAsync (postData, detail, appData, callback)
+{
+    var dataObjArr = [];
     postData = postData['data'];
     var reqCnt = postData.length;
     for (var i = 0; i < reqCnt; i++) {
         var fields = postData[i]['fields'];
         dataObjArr[i] = {};
+        dataObjArr[i]['detail'] = detail;
         dataObjArr[i]['type'] = postData[i]['type'];
         dataObjArr[i]['appData'] = appData;
         if ((null != fields) && (fields.length > 0)) {
             dataObjArr[i]['fields'] = fields.join(',');
         }
-        if (null != postData[i]['parent_uuid']) {
-            dataObjArr[i]['parent_uuid'] = postData[i]['parent_uuid'];
+        if (null != postData[i]['parent_id']) {
+            dataObjArr[i]['parent_id'] = postData[i]['parent_id'];
+        }
+        if (null != postData[i]['obj_uuids']) {
+            dataObjArr[i]['obj_uuids'] = postData[i]['obj_uuids'];
+        }
+        if ((null != postData[i]['parent_fq_name_str']) &&
+            (null != postData[i]['parent_type'])) {
+            dataObjArr[i]['parent_fq_name_str'] =
+                postData[i]['parent_fq_name_str'];
+            dataObjArr[i]['parent_type'] = postData[i]['parent_type'];
+        }
+        var backRefIds = postData[i]['back_ref_id'];
+        if ((null != backRefIds) && (backRefIds.length > 0)) {
+            dataObjArr[i]['back_ref_id'] = backRefIds.join(',');
+        }
+        if (null != postData[i]['fq_name']) {
+            dataObjArr[i]['fq_name'] = postData[i]['fq_name'];
+        }
+        if (null != postData[i]['filters']) {
+            dataObjArr[i]['filters'] = postData[i]['filters'];
         }
     }
     async.map(dataObjArr, getConfigDetailsAsync, function(err, results) {
-        commonUtils.handleJSONResponse(err, res, results);
+        callback(err, results);
+    });
+}
+
+function getConfigList (req, res, appData)
+{
+    var postData = req.body;
+    var detail = false;
+    getConfigAsync(postData, detail, appData, function(err, data) {
+        commonUtils.handleJSONResponse(err, res, data);
+    });
+}
+
+function getConfigObjectsAsync (dataObj, callback)
+{
+    var appData = dataObj['appData'], uuid = dataObj['uuid'];
+    var url = '/' + dataObj['type'] + "/" + uuid;
+    configApiServer.apiGet(url, appData, function(err, data) {
+        callback(err, data);
+    });
+}
+
+function getConfigObjects (req, res, appData)
+{
+    var dataObjArr = [], postData = commonUtils.getValueByJsonPath(req,
+        "body;data", [], false),
+        reqCnt = postData.length, i;
+    for (i = 0; i < reqCnt; i++) {
+        dataObjArr[i] = {};
+        dataObjArr[i]['type'] = postData[i]['type'];
+        dataObjArr[i]['appData'] = appData;
+        dataObjArr[i]['uuid'] = postData[i]["uuid"];
+    }
+    async.map(dataObjArr, getConfigObjectsAsync, function(err, data) {
+        commonUtils.handleJSONResponse(err, res, data);
     });
 }
 
@@ -347,9 +519,185 @@ function deleteConfigObjCB (dataObj, callback)
     });
 }
 
+function getConfigUUIDList (req, res, appData)
+{
+    var type        = req.param('type');
+    var parentUUID  = req.param('parentUUID');
+    var resultJSON = [];
+    type = type + 's';
+
+    var configUrl = '/' + type + '?parent_id=' + parentUUID;
+    configApiServer.apiGet(configUrl, appData, function(err, configData) {
+        if ((null != err) || (null == configData) ||
+            (null == configData[type])) {
+            commonUtils.handleJSONResponse(err, res, resultJSON);
+            return;
+        }
+        configData = configData[type];
+        if ((null == configData) || (!configData.length)) {
+            commonUtils.handleJSONResponse(null, res, resultJSON);
+            return;
+        }
+        var count = configData.length;
+        for (var i = 0; i < count; i++) {
+            resultJSON.push(configData[i]['uuid']);
+        }
+        commonUtils.handleJSONResponse(null, res, resultJSON);
+    });
+}
+
+function getConfigPageRespAsync (configReqObj, callback)
+{
+    var type = configReqObj['type'];
+    var data = configReqObj['data'];
+    var appData = configReqObj['appData'];
+    var configPageCB = getConfigPageRespCB[type];
+    configPageCB(data, appData, function(err, data) {
+        callback(err, data);
+    });
+}
+
+function getConfigPaginatedResponse (req, res, appData)
+{
+    var body = req.body;
+    var type = body.type + 's';
+    var uuidList = body.uuidList;
+    var fields = body.fields;
+    var dataObjGetArr = [];
+    var configReqObjArr = [];
+    var tmpArray = [];
+
+    var chunk = 200;
+    var uuidCnt = uuidList.length;
+    for (var i = 0, j = uuidCnt; i < j; i += chunk) {
+        tmpArray = uuidList.slice(i, i + chunk);
+        var reqUrl = '/' + type + '?detail=true&obj_uuids=' + tmpArray.join(',');
+        if ((null != fields) && (fields.length > 0)) {
+            reqUrl += '&fields=' + fields.join(',');
+        }
+        commonUtils.createReqObj(dataObjGetArr, reqUrl, null, null, null, null,
+                                 appData);
+    }
+    async.map(dataObjGetArr,
+              commonUtils.getAPIServerResponse(configApiServer.apiGet, true),
+              function(error, results) {
+        var resultJSON = [];
+        var resCnt = results.length;
+        for (var i = 0; i < resCnt; i++) {
+            results[i] = results[i][type];
+            resultJSON = resultJSON.concat(results[i]);
+        }
+        var configPageCB = getConfigPageRespCB[body.type];
+        if (null == configPageCB) {
+            commonUtils.handleJSONResponse(null, res, resultJSON);
+            return;
+        }
+        resCnt = resultJSON.length;
+        for (i = 0; i < resCnt; i++) {
+            configReqObjArr.push({'type': body.type, 'data': resultJSON[i],
+                                 'appData': appData});
+        }
+        async.map(configReqObjArr, getConfigPageRespAsync,
+                  function(err, customConfigData) {
+            commonUtils.handleJSONResponse(err, res, customConfigData);
+            return;
+        });
+    });
+}
+
+/*
+ * Calls fqname-to-id on api server,
+ * expects fqnAppObj in form {'appData': appData,
+ *                          'fqnReq': {'fq_name': 'my_name',
+ *                                     'type': project}
+ *                        }
+ */
+function getUUIDByFQN (fqnAppObj, callback) {
+    var fqnameURL     = '/fqname-to-id';
+
+    configApiServer.apiPost(fqnameURL, fqnAppObj.fqnReq,
+                                fqnAppObj.appData,
+                         function(error, data) {
+            callback(error, data);
+    });
+}
+
+
+function createOrUpdateConfigObjectCB (dataObjArr, callback)
+{
+    var reqUrl = dataObjArr['reqUrl'];
+    var appData = dataObjArr['appData'];
+    var data = dataObjArr['data'];
+    var type = dataObjArr['type'];
+    if (global.HTTP_REQUEST_PUT == type) {
+        configApiServer.apiPut(reqUrl, data, appData, function(error, data) {
+            callback(error, data);
+        });
+    } else {
+        configApiServer.apiPost(reqUrl, data, appData, function(error, data) {
+            callback(error, data);
+        });
+    }
+}
+
+function createConfigObject (req, res, appData)
+{
+    var body = req.body;
+    if (null === body) {
+        var error = new appErrors.RESTServerError('Invalid POST Data');
+        commonUtils.handleJSONResponse(error, res, null);
+        return;
+    }
+    createOrUpdateConfigObject(body, global.HTTP_REQUEST_POST,
+                               appData, function(error, results) {
+        commonUtils.handleJSONResponse(error, res, results);
+    });
+}
+
+function updateConfigObject (req, res, appData)
+{
+    var body = req.body;
+    if (null === body) {
+        var error = new appErrors.RESTServerError('Invalid POST Data');
+        commonUtils.handleJSONResponse(error, res, null);
+        return;
+    }
+    createOrUpdateConfigObject(body, global.HTTP_REQUEST_PUT,
+                               appData, function(error, results) {
+        commonUtils.handleJSONResponse(error, res, results);
+    });
+}
+
+function createOrUpdateConfigObject (body, type, appData, callback)
+{
+    var dataObjArr = [];
+    var data = commonUtils.getValueByJsonPath(body, 'data', [], false);
+    var reqCnt = data.length;
+    var dataObjArr = [];
+    for (var i = 0; i < reqCnt; i++) {
+        dataObjArr[i] = {};
+        dataObjArr[i]['type'] = type;
+        dataObjArr[i]['data'] = data[i]['data'];
+        dataObjArr[i]['appData'] = appData;
+        dataObjArr[i]['reqUrl'] = data[i]['reqUrl'];
+    }
+    async.map(dataObjArr, createOrUpdateConfigObjectCB,
+              function(err, results) {
+        callback(err, results);
+    });
+}
+
+
+exports.getConfigUUIDList = getConfigUUIDList;
 exports.deleteMultiObject = deleteMultiObject;
 exports.getConfigDetails = getConfigDetails;
+exports.createConfigObject = createConfigObject;
+exports.updateConfigObject = updateConfigObject;
+exports.getConfigList = getConfigList;
+exports.getConfigObjects = getConfigObjects;
 exports.deleteMultiObjectCB = deleteMultiObjectCB;
 exports.deleteConfigObj = deleteConfigObj;
 exports.deleteConfigObjCB = deleteConfigObjCB;
+exports.getConfigPaginatedResponse = getConfigPaginatedResponse;
+exports.getUUIDByFQN = getUUIDByFQN;
 

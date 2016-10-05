@@ -4,9 +4,9 @@
 
 define([
     'underscore',
-    'backbone'
-], function (_, Backbone) {
-    var ProjectView = Backbone.View.extend({
+    'contrail-view'
+], function (_, ContrailView) {
+    var ProjectView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
@@ -24,10 +24,10 @@ define([
 
         renderProjectGraph: function(projectFQN, projectUUID) {
             var topContainerElement = $('#' + ctwl.TOP_CONTENT_CONTAINER),
-                connectedGraph = ctwu.getNetworkingGraphConfig(ctwc.get(ctwc.URL_PROJECT_CONNECTED_GRAPH, projectFQN), {fqName: projectFQN}, ':connected', ctwc.GRAPH_ELEMENT_PROJECT),
-                configGraph = ctwu.getNetworkingGraphConfig(ctwc.get(ctwc.URL_PROJECT_CONFIG_GRAPH, projectFQN), {fqName: projectFQN}, ':config', ctwc.GRAPH_ELEMENT_PROJECT);
+                connectedGraph = nmwvc.getMNConnnectedGraphConfig(ctwc.get(ctwc.URL_PROJECT_CONNECTED_GRAPH, projectFQN), {fqName: projectFQN}, ':connected', ctwc.GRAPH_ELEMENT_PROJECT),
+                configGraph = nmwu.getMNConfigGraphConfig(ctwc.get(ctwc.URL_PROJECT_CONFIG_GRAPH, projectFQN), {fqName: projectFQN}, ':config', ctwc.GRAPH_ELEMENT_PROJECT);
 
-            cowu.renderView4Config(topContainerElement, null, getProjectGraphViewConfig(connectedGraph, configGraph, projectFQN, projectUUID), null, null, null);
+            this.renderView4Config(topContainerElement, null, getProjectGraphViewConfig(connectedGraph, configGraph, projectFQN, projectUUID), null, null, null);
         },
 
         renderProjectTabs: function(projectFQN, projectUUID) {
@@ -44,32 +44,19 @@ define([
                 });
             }
 
-            cowu.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
+            this.renderView4Config(bottomContainerElement, null, tabConfig, null, null, null);
         }
     });
 
     function getProjectGraphViewConfig(connectedGraph, configGraph, projectFQN, projectUUID) {
         return {
-            elementId: cowu.formatElementId([ctwl.MONITOR_PROJECT_ID]),
-            view: "SectionView",
-            viewConfig: {
-                rows: [
-                    {
-                        columns: [
-                            {
-                                elementId: ctwl.PROJECT_GRAPH_ID,
-                                view: "NetworkingGraphView",
-                                app: cowc.APP_CONTRAIL_CONTROLLER,
-                                viewConfig: {connectedGraph: connectedGraph, configGraph: configGraph}
-                            }
-                        ]
-                    },
-
-                ]
-            }
-        }
+            elementId: ctwl.PROJECT_GRAPH_ID,
+            view: "NetworkingGraphView",
+            viewPathPrefix: "monitor/networking/ui/js/views/",
+            app: cowc.APP_CONTRAIL_CONTROLLER,
+            viewConfig: {connectedGraph: connectedGraph, configGraph: configGraph}
+        };
     };
 
     return ProjectView;
-
 });

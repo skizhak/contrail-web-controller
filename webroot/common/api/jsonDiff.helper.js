@@ -5,6 +5,37 @@ var commonUtils = require(process.mainModule.exports["corePath"] +
                           '/src/serverroot/utils/common.utils');
 
 var configJsonModifyObj = {
+    "bgp-router": {
+        "isConfig": true,
+        "optFields": ["bgp_router_parameters",
+                      "bgp_router_refs", "perms2"],
+        "mandateFields":["fq_name", "uuid", "display_name"]
+    },
+    "virtual-router": {
+        "isConfig": true,
+        "optFields": ["virtual_router_ip_address",
+                      "virtual_router_type", "perms2"],
+        "mandateFields":["fq_name", "uuid", "display_name"]
+    },
+    "physical-router": {
+        "isConfig": true,
+        'preProcessCB': {
+            'applyOnOldJSON': modifyConfigDataByAttrHrefUUID,
+            'applyOnNewJSON': modifyConfigDataByAttrHrefUUID
+        },
+        "optFields": ["physical_router_vendor_name",
+                      "physical_router_product_name",
+                      "physical_router_management_ip",
+                      "physical_router_dataplane_ip",
+                      "physical_router_snmp_credentials",
+                      "physical_router_user_credentials",
+                      "physical_router_junos_service_ports",
+                      "virtual_router_refs",
+                      "bgp_router_refs",
+                      "physical_router_vnc_managed",
+                      "virtual_network_refs", "perms2"],
+        "mandateFields":["fq_name", "uuid", "display_name"]
+    },
     'virtual-network': {
         'isConfig': true,
         'preProcessCB': {
@@ -12,8 +43,14 @@ var configJsonModifyObj = {
         },
         'optFields': ['virtual_network_properties',
             'network_ipam_refs', 'network_policy_refs',
-            'route_target_list', 'is_shared',
-            'router_external', 'id_perms:enable'],
+            'route_target_list', 'export_route_target_list',
+            'import_route_target_list', 'is_shared',
+            'router_external', 'id_perms:enable',
+            'flood_unknown_unicast', 'multi_policy_service_chains_enabled',
+            'route_table_refs', 'provider_properties',
+            'ecmp_hashing_include_fields',
+            'qos_config_refs',
+            'perms2'],
         'mandateFields': ['fq_name', 'uuid', 'display_name'],
         'subType': {
             'project': {
@@ -24,37 +61,141 @@ var configJsonModifyObj = {
     },
     'network-ipam': {
         'isConfig': true,
-        'optFields': ['network_ipam_mgmt', 'virtual_DNS_refs'],
+        'optFields': ['network_ipam_mgmt', 'virtual_DNS_refs', 'perms2'],
         'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'virtual-machine-interface': {
+        'isConfig': true,
+        'preProcessCB': {
+            'applyOnOldJSON': modifyConfigDataByAttrHrefUUID,
+            'applyOnNewJSON': modifyConfigDataByAttrHrefUUID
+        },
+        'optFields': ['ecmp_hashing_include_fields', 'virtual_machine_interface_bindings',
+            'virtual_machine_interface_allowed_address_pairs',
+            'service_health_check_refs', 'virtual_machine_interface_dhcp_option_list',
+            'virtual_machine_interface_fat_flow_protocols',
+            'id_perms:enable',
+            'virtual_machine_interface_refs',
+            'interface_route_table_refs',
+            'virtual_machine_interface_properties',
+            'virtual_machine_interface_mac_addresses', 'security_group_refs',
+            'virtual_network_refs', 'virtual_machine_interface_device_owner',
+            'virtual_machine_interface_disable_policy',
+            'qos_config_refs',
+            'perms2'
+        ],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    "network-policy": {
+        "isConfig": true,
+        "optFields": ["network_policy_entries", "perms2"],
+        "mandateFields":["fq_name", "uuid", "display_name"]
     },
     'security-group': {
         'isConfig': true,
         'preProcessCB': {
             'applyOnOldJSON': modifySecurityGroupConfigData,
         },
-        'optFields': ['security_group_entries'],
+        'optFields': ['security_group_entries', 'configured_security_group_id',
+                      'perms2'],
         'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'logical-router': {
+        'isConfig': true,
+        'preProcessCB': {
+            'applyOnOldJSON': modifyConfigDataByAttrHref,
+            'applyOnNewJSON': modifyConfigDataByAttrHref
+        },
+        'optFields': [
+            'virtual_machine_interface_refs',
+            'virtual_network_refs',
+            'configured_route_target_list',
+            'perms2'
+        ],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    "routing-policy": {
+        "isConfig": true,
+        "optFields": ["routing_policy_entries", "perms2"],
+        "mandateFields":["fq_name", "uuid", "display_name"]
     },
     'virtual-DNS': {
         'isConfig': true,
-        'mandateFields': ['fq_name', 'uuid', 'display_name', 'virtual_DNS_data']
+        'mandateFields': ['fq_name', 'uuid', 'display_name', 'virtual_DNS_data',
+                          'perms2']
     },
     'virtual-DNS-record': {
         'isConfig': true,
         'mandateFields': ['fq_name', 'uuid', 'display_name',
-                          'virtual_DNS_record_data']
+                          'virtual_DNS_record_data', 'perms2']
     },
     'service-instance': {
         'isConfig': true,
-        'optFields': ['service_instance_properties'],
+        'optFields': ['service_instance_properties', 'perms2'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'bgp-as-a-service': {
+        'isConfig': true,
+        'preProcessCB': {
+            'applyOnOldJSON': modifyConfigDataByAttrHref
+        },
+        'optFields': ['bgpaas_session_attributes',
+                      'autonomous_system',
+                      'bgpaas_ip_address',
+                      'virtual_machine_interface_refs',
+                      'bgpaas_ipv4_mapped_ipv6_nexthop',
+                      'bgpaas_suppress_route_advertisement',
+                      'perms2'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'physical-interface': {
+        'isConfig': true,
+        'optFields': ['physical_interface_refs', 'perms2'],
         'mandateFields': ['fq_name', 'uuid', 'display_name']
     },
     'logical-interface': {
         'isConfig': true,
         'preProcessCB': {
-            'applyOnOldJSON': modifyConfigDataByAttrHref,
+            'applyOnOldJSON': modifyConfigDataByAttrHref
         },
-        'optFields': ['virtual_machine_interface_refs'],
+        'optFields': ['virtual_machine_interface_refs', 'perms2'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'global-system-config': {
+        'isConfig': true,
+        'optFields': ['autonomous_system', 'ibgp_auto_mesh', 'ip_fabric_subnets'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'global-vrouter-config': {
+        'isConfig': true,
+        'optFields': ['forwarding_mode', 'vxlan_network_identifier_mode',
+                      'encapsulation_priorities', 'linklocal_services',
+                      'flow_export_rate', 'flow_aging_timeout_list',
+                      'ecmp_hashing_include_fields'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'service-appliance': {
+        'isConfig': true,
+        'optFields': ['service_appliance_ip_address',
+            'service_appliance_user_credentials',
+            'service_appliance_properties', 'physical_interface_refs',
+            'perms2'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'service-appliance-set': {
+        'isConfig': true,
+        'optFields': ['service_appliance_ha_mode', 'service_appliance_driver',
+            'service_appliance_set_properties', 'perms2'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'route-table': {
+        'isConfig': true,
+        'optFields': ['routes', 'perms2'],
+        'mandateFields': ['fq_name', 'uuid', 'display_name']
+    },
+    'interface-route-table': {
+        'isConfig': true,
+        'optFields': ['interface_route_table_routes', 'perms2'],
         'mandateFields': ['fq_name', 'uuid', 'display_name']
     },
     'physical-topology': {
@@ -100,30 +241,22 @@ function modifyPhyTopoData (type, jsonData, optFields, mandateFields)
 }
 
 var configArrSkipObjsUUID = ['href', 'uuid'];
-var configArrSkipObjsAttr = ['href', 'attr'];
-function modifyConfigDataByAttrHref (type, configData, optFields, mandateFields)
+var configArrSkipObjsAttrHref = ['href', 'attr'];
+var configArrSkipObjsAttrHrefUUID = ['href', 'attr', 'uuid'];
+
+function modifyConfigDataByAttrHref (type, configData,
+    optFields, mandateFields)
 {
     return modifyConfigData(type, configData, optFields, mandateFields,
-                            configArrSkipObjsAttr);
-}
+            configArrSkipObjsAttrHref);
+};
 
-function configArrAttrFound (configObj, skipArr)
+function modifyConfigDataByAttrHrefUUID (type, configData,
+        optFields, mandateFields)
 {
-    var skipArrLen = skipArr.length;
-    for (var i = 0; i < skipArrLen; i++) {
-        var found = false;
-        for (key in configObj) {
-            if (key == skipArr[i]) {
-                found = true;
-                break;
-            }
-        }
-        if (false == found) {
-            return false;
-        }
-    }
-    return true;
-}
+        return modifyConfigData(type, configData, optFields, mandateFields,
+                                configArrSkipObjsAttrHrefUUID);
+};
 
 function modifyVirtualNetworkConfigData (type, configData, optFields, mandateFields)
 {
@@ -186,11 +319,6 @@ function modifyConfigData (type, configData, optFields, mandateFields, skipArr)
         if (newConfigData[optFields[i]] instanceof Array) {
             var newConfigDataFieldsLen = newConfigData[optFields[i]].length;
             for (var j = 0; j < newConfigDataFieldsLen; j++) {
-                if (false ==
-                        configArrAttrFound(newConfigData[optFields[i]][j],
-                                           skipArr)) {
-                    continue;
-                }
                 for (var k = 0; k < configArrSkipObjsLen; k++) {
                     delete newConfigData[optFields[i]][j][skipArr[k]];
                 }

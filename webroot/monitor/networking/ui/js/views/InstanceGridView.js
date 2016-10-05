@@ -4,20 +4,20 @@
 
 define([
     'underscore',
-    'backbone'
-], function (_, Backbone) {
-    var InstanceGridView = Backbone.View.extend({
+    'contrail-view'
+], function (_, ContrailView) {
+    var InstanceGridView = ContrailView.extend({
         el: $(contentContainer),
 
         render: function () {
-            var that = this,
+            var self = this,
                 viewConfig = this.attributes.viewConfig,
                 parentUUID = viewConfig['parentUUID'],
                 parentType = viewConfig['parentType'],
                 pagerOptions = viewConfig['pagerOptions'];
 
             var instanceRemoteConfig = {
-                url: parentUUID != null ? ctwc.get(ctwc.URL_PROJECT_INSTANCES_IN_CHUNKS, parentUUID, 10, parentType, $.now()) : ctwc.get(ctwc.URL_INSTANCE_DETAILS_IN_CHUNKS, 25, $.now()),
+                url: parentUUID != null ? ctwc.get(ctwc.URL_PROJECT_INSTANCES_IN_CHUNKS, parentUUID, 10, 100, parentType, $.now()) : ctwc.get(ctwc.URL_INSTANCE_DETAILS_IN_CHUNKS, 10, 250, $.now()),
                 type: 'POST',
                 data: JSON.stringify({
                     data: [{"type": ctwc.TYPE_VIRTUAL_MACHINE, "cfilt": ctwc.FILTERS_COLUMN_VM.join(',')}]
@@ -27,31 +27,19 @@ define([
             // TODO: Handle multi-tenancy
             var ucid = (parentUUID != null) ? (ctwc.UCID_PREFIX_MN_LISTS + parentUUID + ":" + 'virtual-machines') : ctwc.UCID_ALL_VM_LIST;
 
-            cowu.renderView4Config(that.$el, this.model, getInstanceGridViewConfig(instanceRemoteConfig, ucid, pagerOptions));
+            self.renderView4Config(self.$el, this.model, getInstanceGridViewConfig(instanceRemoteConfig, ucid, pagerOptions));
         }
     });
 
     var getInstanceGridViewConfig = function (instanceRemoteConfig, ucid, pagerOptions) {
         return {
-            elementId: cowu.formatElementId([ctwl.MONITOR_INSTANCE_LIST_VIEW_ID]),
-            view: "SectionView",
+            elementId: ctwl.PROJECT_INSTANCE_GRID_ID,
+            title: ctwl.TITLE_INSTANCES,
+            view: "GridView",
             viewConfig: {
-                rows: [
-                    {
-                        columns: [
-                            {
-                                elementId: ctwl.PROJECT_INSTANCE_GRID_ID,
-                                title: ctwl.TITLE_INSTANCES,
-                                view: "GridView",
-                                viewConfig: {
-                                    elementConfig: getProjectInstancesConfig(instanceRemoteConfig, ucid, pagerOptions)
-                                }
-                            }
-                        ]
-                    }
-                ]
+                elementConfig: getProjectInstancesConfig(instanceRemoteConfig, ucid, pagerOptions)
             }
-        }
+        };
     };
 
     var getProjectInstancesConfig = function (instanceRemoteConfig, ucid, pagerOptions) {
@@ -72,8 +60,9 @@ define([
                     autoRefresh: false,
                     checkboxSelectable: false,
                     detail: {
-                        template: cowu.generateDetailTemplateHTML(getInstanceDetailsTemplateConfig(), cowc.APP_CONTRAIL_CONTROLLER)
-                    }
+                        template: cowu.generateDetailTemplateHTML(ctwvc.getDetailRowInstanceTemplateConfig(), cowc.APP_CONTRAIL_CONTROLLER, 'value')
+                    },
+                    fixedRowHeight: 30
                 },
                 dataSource: {
                     remote: {
@@ -86,6 +75,14 @@ define([
                     cacheConfig : {
                         ucid: ucid
                     }
+                },
+                statusMessages: {
+                    loading: {
+                        text: 'Loading Instances..'
+                    },
+                    empty: {
+                        text: 'No Instances Found.'
+                    }
                 }
             },
             columnHeader: {
@@ -96,87 +93,6 @@ define([
             }
         };
         return gridElementConfig;
-    };
-
-    var getInstanceDetailsTemplateConfig = function() {
-        return {
-            templateGenerator: 'RowSectionTemplateGenerator',
-            templateGeneratorConfig: {
-                rows: [
-                    {
-                        templateGenerator: 'ColumnSectionTemplateGenerator',
-                        templateGeneratorConfig: {
-                            columns: [
-                                {
-                                    class: 'span6',
-                                    rows: [
-                                        {
-                                            title: ctwl.TITLE_INSTANCE_DETAILS,
-                                            templateGenerator: 'BlockListTemplateGenerator',
-                                            templateGeneratorConfig: [
-                                                {
-                                                    key: 'name',
-                                                    templateGenerator: 'TextGenerator'
-                                                },
-                                                {
-                                                    key: 'vRouter',
-                                                    templateGenerator: 'LinkGenerator',
-                                                    templateGeneratorConfig: {
-                                                        template: ctwc.URL_VROUTER,
-                                                        params: {}
-                                                    }
-                                                },
-                                                {
-                                                    key: 'vn',
-                                                    templateGenerator: 'TextGenerator'
-                                                },
-                                                {
-                                                    key: 'ip',
-                                                    templateGenerator: 'TextGenerator'
-                                                },
-                                                {
-                                                    key: 'intfCnt',
-                                                    templateGenerator: 'TextGenerator'
-                                                }
-                                            ]
-                                        }
-                                    ]
-                                },
-                                {
-                                    class: 'span6',
-                                    rows: [
-                                        {
-                                            title: ctwl.TITLE_CPU_MEMORY_INFO,
-                                            templateGenerator: 'BlockListTemplateGenerator',
-                                            templateGeneratorConfig: [
-                                                {
-                                                    key: 'value.UveVirtualMachineAgent.cpu_info.cpu_one_min_avg',
-                                                    templateGenerator: 'TextGenerator'
-                                                },
-                                                {
-                                                    key: 'value.UveVirtualMachineAgent.cpu_info.rss',
-                                                    templateGenerator: 'TextGenerator',
-                                                    templateGeneratorConfig: {
-                                                        formatter: 'kilo-byte'
-                                                    }
-                                                },
-                                                {
-                                                    key: 'value.UveVirtualMachineAgent.cpu_info.vm_memory_quota',
-                                                    templateGenerator: 'TextGenerator',
-                                                    templateGeneratorConfig: {
-                                                        formatter: 'kilo-byte'
-                                                    }
-                                                }
-                                            ]
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
-        };
     };
 
     return InstanceGridView;
